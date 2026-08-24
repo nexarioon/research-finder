@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "research-finder"
+version = "0.1.0"
+description = "A CLI tool for discovering local businesses as research/skripsi objects"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Research Finder" }]
+dependencies = [
+    "rich>=13.0",
+    "textual>=0.82",
+    "questionary>=2.0",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.19",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "httpx>=0.25",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+research-finder = "research_finder.cli.main:main"
+research-finder-tui = "research_finder.cli.tui.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research_finder"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "TCH"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
