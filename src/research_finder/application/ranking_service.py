@@ -5,11 +5,62 @@ import logging
 
 from research_finder.database.connection import get_session_factory
 from research_finder.database.scoring_repository import ScoringRepository
-from research_finder.domain.models import Business
+from research_finder.domain.models import Business, ScoreBreakdown
 from research_finder.domain.models import BusinessStatus as DomainStatus
-from research_finder.services.scoring import ScoringService
 
 logger = logging.getLogger(__name__)
+
+
+class ScoringService:
+    """Calculates research suitability scores for businesses."""
+
+    def score_business(self, business: Business) -> ScoreBreakdown:
+        # 1. Business Size & Scale (max 25)
+        # Small/local independent businesses score higher for thesis viability
+        size_score = 25.0
+        if business.is_franchise:
+            size_score = 8.0
+
+        # 2. Operational Complexity (max 30)
+        # Businesses with higher inventory/workflow complexity score higher
+        category_weights = {
+            "Retail": 28.0,
+            "Food & Dining": 25.0,
+            "Automotive": 26.0,
+            "Health & Beauty": 24.0,
+            "Business Services": 22.0,
+            "Services": 22.0,
+            "Technology": 20.0,
+            "Entertainment": 18.0,
+            "Financial Services": 18.0,
+            "Other": 15.0,
+        }
+        complexity_score = category_weights.get(business.category or "Other", 18.0)
+
+        # 3. Online Presence & Digitalization Gap (max 25)
+        # High score if business exists but needs better digital systems
+        online_score = 10.0
+        if business.has_online_presence or business.website:
+            online_score = 22.0
+
+        # 4. Contact Availability (max 20)
+        # Higher score if easy to reach out (phone/WA, email)
+        contact_score = 0.0
+        if business.phone:
+            contact_score += 12.0
+        if business.email:
+            contact_score += 8.0
+
+        total = size_score + complexity_score + online_score + contact_score
+        total = round(min(100.0, max(0.0, total)), 1)
+
+        return ScoreBreakdown(
+            business_size=size_score,
+            operational_complexity=complexity_score,
+            online_presence=online_score,
+            contact_availability=contact_score,
+            total=total,
+        )
 
 
 class CandidateRankingService:

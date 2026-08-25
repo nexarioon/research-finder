@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Prospect Finder - Web UI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-icon">RF</div>
+        <div class="brand-info">
+          <h1>Research Finder</h1>
+          <span>Skripsi & Research Object</span>
+        </div>
+      </div>
+
+      <ul class="nav-links">
+        <li class="nav-item">
+          <button class="nav-btn active" data-tab="dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+            Dashboard
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="discover">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Discovery / Scanner
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="saved">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Bisnis Tersimpan
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="scoring">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Scoring & Ranking
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="ai">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2a8 8 0 0 0-8 8c0 3.36 2.08 6.24 5 7.42V20a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2.58c2.92-1.18 5-4.06 5-7.42a8 8 0 0 0-8-8z"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/><path d="M9 13a3 3 0 0 0 6 0"/></svg>
+            AI Skripsi Insights
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="topics">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            Topik Riset
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="outreach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Outreach Pipeline
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="export">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Ekspor Data
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-btn" data-tab="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Pengaturan
+          </button>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div>Research Finder v0.1.0</div>
+        <div style="font-size: 11px; opacity: 0.7; margin-top: 2px;">SQLite + OmniRoute AI</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="header-title-area">
+          <h2 id="page-title">Dashboard Overview</h2>
+        </div>
+
+        <div class="header-actions">
+          <div class="ai-status-badge" id="ai-status-badge">
+            <span class="pulse-dot"></span>
+            <span id="ai-status-text">AI Ready (Gemini)</span>
+          </div>
+
+          <button class="refresh-btn" id="btn-refresh" title="Refresh Data">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+
+          <button class="theme-toggle-btn" id="btn-theme-toggle" title="Ganti Tema (Gelap / Terang)">
+            <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            <svg id="theme-icon-moon" style="display:none;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Page Content -->
+      <main class="content-view">
+        <!-- 1. DASHBOARD VIEW -->
+        <section class="tab-pane active" id="pane-dashboard">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon blue">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3 id="stat-total-biz">0</h3>
+                <p>Total Bisnis</p>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon green">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3 id="stat-scored-biz">0</h3>
+                <p>Sudah Discore</p>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon purple">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.36 2.08 6.24 5 7.42V20a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2.58c2.92-1.18 5-4.06 5-7.42a8 8 0 0 0-8-8z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3 id="stat-analyzed-biz">0</h3>
+                <p>Dianalisis AI</p>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon amber">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              </div>
+              <div class="stat-info">
+                <h3 id="stat-total-topics">0</h3>
+                <p>Topik Skripsi</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions & Recent Candidates -->
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+            <div class="card">
+              <div class="card-header">
+                <h3>Bisnis Terbaru Tersimpan</h3>
+                <button class="btn btn-secondary btn-sm" onclick="app.switchTab('saved')">Lihat Semua</button>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Nama Bisnis</th>
+                      <th>Kategori</th>
+                      <th>Rating</th>
+                      <th>Skor Riset</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-recent-table-body">
+                    <tr><td colspan="5" class="empty-state">Memuat data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3>Aksi Cepat</h3>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button class="btn btn-primary" onclick="app.switchTab('discover')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  Scan Bisnis Baru
+                </button>
+                <button class="btn btn-secondary" onclick="app.runScoreAll()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  Score Semua Bisnis
+                </button>
+                <button class="btn btn-secondary" onclick="app.switchTab('topics')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                  Lihat Ide Topik Skripsi
+                </button>
+                <button class="btn btn-secondary" onclick="app.switchTab('export')">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Ekspor Data ke CSV
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. DISCOVERY / SCANNER VIEW -->
+        <section class="tab-pane" id="pane-discover">
+          <div class="card">
+            <div class="card-header">
+              <h3>Cari Bisnis Lokal (OpenStreetMap / Nominatim)</h3>
+            </div>
+            <form id="form-scan" onsubmit="event.preventDefault(); app.startScan();">
+              <div class="form-row">
+                <div class="form-group" style="grid-column: span 2;">
+                  <label class="form-label">Lokasi Pencarian (Nama Kota, Kecamatan, atau Alamat)</label>
+                  <input type="text" id="scan-location" class="form-control" placeholder="Contoh: Kaliurang, Yogyakarta atau Malang, Jawa Timur" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Radius Pencarian (km)</label>
+                  <input type="number" id="scan-radius" class="form-control" min="1" max="25" value="5" step="0.5">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Filter Kategori (Opsional)</label>
+                <div class="category-pills">
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Technology"><span>💻 Technology / Komputer</span></label>
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Retail"><span>🛒 Retail / Toko</span></label>
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Food & Dining"><span>🍽️ Kuliner / Cafe</span></label>
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Health & Beauty"><span>🏥 Kesehatan & Klinik</span></label>
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Automotive"><span>🚗 Bengkel / Otomotif</span></label>
+                  <label class="pill-check"><input type="checkbox" name="cat" value="Services"><span>🛠️ Jasa / Services</span></label>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button type="submit" class="btn btn-primary" id="btn-start-scan">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  Mulai Scanning
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Scan Results -->
+          <div class="card" id="scan-results-card" style="display:none;">
+            <div class="card-header">
+              <div>
+                <h3>Hasil Discovery</h3>
+                <p style="font-size: 12.5px; color: var(--text-muted);" id="scan-summary-text"></p>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary btn-sm" onclick="app.clearScannedResults()">
+                  🗑️ Bersihkan Hasil Scan
+                </button>
+                <button class="btn btn-success" id="btn-save-scanned" onclick="app.saveScannedResults()">
+                  Simpan Semua ke Database
+                </button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nama Bisnis</th>
+                    <th>Kategori</th>
+                    <th>Alamat</th>
+                    <th>Website / Kontak</th>
+                    <th>Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="scan-results-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. SAVED BUSINESSES VIEW -->
+        <section class="tab-pane" id="pane-saved">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Daftar Bisnis Tersimpan</h3>
+                <p style="font-size: 12.5px; color: var(--text-muted);" id="saved-header-info">Menampilkan database bisnis riset.</p>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-danger btn-sm" onclick="app.clearAllSavedBusinesses()" title="Hapus semua data bisnis tersimpan di database">
+                  🗑️ Hapus Semua Bisnis
+                </button>
+              </div>
+            </div>
+
+            <!-- Filter & Tag Toolbar -->
+            <div class="filter-panel" style="background: var(--bg-tertiary); padding: 14px 16px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--bg-card-border);">
+              <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
+                <!-- Search -->
+                <div style="flex: 1; min-width: 220px;">
+                  <input type="text" id="saved-search" class="form-control" placeholder="🔍 Cari nama bisnis, alamat, atau kata kunci..." oninput="app.loadSavedBusinesses(1)">
+                </div>
+                
+                <!-- Kategori -->
+                <div style="width: 190px;">
+                  <select id="filter-category" class="form-select" onchange="app.loadSavedBusinesses(1)">
+                    <option value="all">📁 Semua Kategori</option>
+                  </select>
+                </div>
+
+                <!-- Rating -->
+                <div style="width: 170px;">
+                  <select id="filter-rating" class="form-select" onchange="app.loadSavedBusinesses(1)">
+                    <option value="0">⭐ Semua Rating</option>
+                    <option value="none">⭐ Belum Ada Rating (OSM)</option>
+                    <option value="4.5">⭐ Rating ≥ 4.5</option>
+                    <option value="4.0">⭐ Rating ≥ 4.0</option>
+                    <option value="3.0">⭐ Rating ≥ 3.0</option>
+                  </select>
+                </div>
+
+                <!-- Skor Riset -->
+                <div style="width: 170px;">
+                  <select id="filter-score" class="form-select" onchange="app.loadSavedBusinesses(1)">
+                    <option value="0">🎯 Semua Skor</option>
+                    <option value="70">🎯 Skor ≥ 70 (Tinggi)</option>
+                    <option value="50">🎯 Skor ≥ 50 (Sedang)</option>
+                    <option value="30">🎯 Skor ≥ 30 (Dasar)</option>
+                  </select>
+                </div>
+
+                <!-- Reset -->
+                <button class="btn btn-secondary btn-sm" onclick="app.resetSavedFilters()" title="Reset semua filter">
+                  ↺ Reset
+                </button>
+              </div>
+
+              <!-- Tag Pills Filter -->
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 4px;">🏷️ Filter Tag:</span>
+                <label class="pill-check"><input type="checkbox" id="tag-wa" onchange="app.loadSavedBusinesses(1)"><span>💬 Ada WhatsApp/Telp</span></label>
+                <label class="pill-check"><input type="checkbox" id="tag-web" onchange="app.loadSavedBusinesses(1)"><span>🌐 Ada Website</span></label>
+                <label class="pill-check"><input type="checkbox" id="tag-email" onchange="app.loadSavedBusinesses(1)"><span>✉️ Ada Email</span></label>
+                <label class="pill-check"><input type="checkbox" id="tag-social" onchange="app.loadSavedBusinesses(1)"><span>📱 Ada Media Sosial</span></label>
+                <label class="pill-check"><input type="checkbox" id="tag-ai" onchange="app.loadSavedBusinesses(1)"><span>🤖 Sudah Analisis AI</span></label>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" onclick="app.sortSaved('id')">ID <span id="sort-icon-id" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('name')">Nama Bisnis <span id="sort-icon-name" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('category')">Kategori <span id="sort-icon-category" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('address')">Alamat <span id="sort-icon-address" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('rating')">Rating <span id="sort-icon-rating" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('total_score')">Skor Riset <span id="sort-icon-total_score" class="sort-indicator">↕</span></th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="saved-table-body">
+                  <tr><td colspan="7" class="empty-state">Memuat bisnis tersimpan...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Toolbar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 4px 4px 4px; border-top: 1px solid var(--bg-card-border); margin-top: 12px; flex-wrap: wrap; gap: 12px;">
+              <div style="font-size: 13px; color: var(--text-secondary);">
+                Menampilkan <b id="saved-showing-count">0</b> dari <b id="saved-total-count">0</b> bisnis tersimpan
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary);">
+                  <span>Tampilkan:</span>
+                  <select id="saved-page-size" class="form-select" style="width: auto; padding: 4px 10px; font-size: 12.5px;" onchange="app.changePageSize(this.value)">
+                    <option value="50" selected>50 / halaman</option>
+                    <option value="100">100 / halaman</option>
+                    <option value="250">250 / halaman</option>
+                    <option value="500">500 / halaman</option>
+                    <option value="1000">1000 / halaman</option>
+                    <option value="0">Tampilkan Semua</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 6px; align-items: center;" id="saved-pagination-nav">
+                  <button class="btn btn-secondary btn-sm" id="btn-page-prev" onclick="app.prevPage()">◀ Sebelumnya</button>
+                  <span style="font-size: 13px; font-weight: 600; padding: 0 4px;" id="saved-page-indicator">Hal 1 / 1</span>
+                  <button class="btn btn-secondary btn-sm" id="btn-page-next" onclick="app.nextPage()">Selanjutnya ▶</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. SCORING & RANKING VIEW -->
+        <section class="tab-pane" id="pane-scoring">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Scoring & Ranking Kelayakan Riset</h3>
+                <p style="font-size: 12.5px; color: var(--text-muted);">Menilai potensi bisnis sebagai objek skripsi (ukuran bisnis, kompleksitas operasional, kehadiran online, dll).</p>
+              </div>
+              <button class="btn btn-primary" onclick="app.runScoreAll()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Score Semua yang Belum Dinilai
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Nama Bisnis</th>
+                    <th>Kategori</th>
+                    <th>Total Skor</th>
+                    <th>Breakdown (Ukuran | Kompleksitas | Online | Kontak)</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="scoring-table-body">
+                  <tr><td colspan="6" class="empty-state">Memuat kandidat riset...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. AI RESEARCH INSIGHTS VIEW -->
+        <section class="tab-pane" id="pane-ai">
+          <div class="card">
+            <div class="card-header">
+              <h3>Analisis AI Objek Skripsi & Sistem Informasi</h3>
+            </div>
+            <div class="form-row" style="align-items: flex-end;">
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">Pilih Bisnis untuk Dianalisis</label>
+                <select id="ai-select-business" class="form-select"></select>
+              </div>
+              <div class="form-group">
+                <button class="btn btn-primary" id="btn-run-ai" onclick="app.runAIAnalysis()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.36 2.08 6.24 5 7.42V20a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2.58c2.92-1.18 5-4.06 5-7.42a8 8 0 0 0-8-8z"/></svg>
+                  Jalankan Analisis AI
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Results Display -->
+          <div class="card" id="ai-results-card" style="display:none;">
+            <div class="card-header">
+              <h3 id="ai-result-title">Hasil Analisis AI</h3>
+              <span class="badge badge-purple" id="ai-result-model">Gemini</span>
+            </div>
+
+            <div class="ai-insight-box">
+              <h4>⚠️ Masalah Operasional Teridentifikasi</h4>
+              <p id="ai-res-problems">-</p>
+            </div>
+
+            <div class="ai-insight-box">
+              <h4>💡 Peluang Solusi Sistem Informasi</h4>
+              <p id="ai-res-opportunities">-</p>
+            </div>
+
+            <div class="ai-insight-box">
+              <h4>🎓 Relevansi Sebagai Objek Skripsi</h4>
+              <p id="ai-res-relevance">-</p>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <h4 style="font-size: 14px; margin-bottom: 12px; font-weight: 700;">📌 Rekomendasi Topik Skripsi yang Dihasilkan:</h4>
+              <div class="topic-grid" id="ai-res-topics-grid"></div>
+            </div>
+
+            <div style="margin-top: 24px;">
+              <h4 style="font-size: 14px; margin-bottom: 8px; font-weight: 700;">❓ Pertanyaan Validasi ke Pemilik Bisnis:</h4>
+              <ul id="ai-res-questions" style="padding-left: 20px; color: var(--text-secondary); font-size: 13.5px; line-height: 1.6;"></ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- 6. TOPICS VIEW -->
+        <section class="tab-pane" id="pane-topics">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Bank Topik & Ide Skripsi</h3>
+                <p style="font-size: 12.5px; color: var(--text-muted);">Koleksi judul dan proposal topik yang digenerate AI maupun ditambahkan manual.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="app.openModalAddTopic()">+ Tambah Topik Manual</button>
+            </div>
+            <div class="topic-grid" id="topics-cards-container">
+              <div class="empty-state">Memuat topik riset...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 7. OUTREACH VIEW -->
+        <section class="tab-pane" id="pane-outreach">
+          <!-- AI Bulk Personalized Outreach Generator Panel -->
+          <div class="generator-box">
+            <div class="generator-header">
+              <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.36 2.08 6.24 5 7.42V20a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2.58c2.92-1.18 5-4.06 5-7.42a8 8 0 0 0-8-8z"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/><path d="M9 13a3 3 0 0 0 6 0"/></svg>
+                🚀 AI Bulk Personalized Outreach Generator (Bahasa Indonesia)
+              </h3>
+              <span class="badge badge-purple">OmniRoute / Gemini AI</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+              AI akan otomatis menyusun pesan permohonan riset/wawancara skripsi yang dibuat khusus secara dinamis mengikuti nama usaha, bidang usaha, dan potensi masalah operasional masing-masing bisnis.
+            </p>
+
+            <form id="form-bulk-outreach" onsubmit="event.preventDefault(); app.runBulkAIGenerate();">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Saluran Komunikasi (Channel)</label>
+                  <select id="bulk-channel" class="form-select">
+                    <option value="whatsapp">💬 WhatsApp / DM Medsos (Santun & Ringkas)</option>
+                    <option value="email">✉️ Email Resmi (Format Surat Proposal)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">
+                    Batasan Jumlah Bisnis (Custom Limit): <b id="bulk-limit-val" style="color:var(--accent-primary);">5 bisnis</b>
+                  </label>
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="range" id="bulk-limit" class="form-control" min="1" max="25" value="5" oninput="document.getElementById('bulk-limit-val').textContent = this.value + ' bisnis'">
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Filter Target</label>
+                  <select id="bulk-filter-contact" class="form-select">
+                    <option value="all">Semua Bisnis Tersimpan</option>
+                    <option value="with_contact">Hanya Bisnis yang Punya Nomor HP/Email</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nama Anda (Mahasiswa)</label>
+                  <input type="text" id="bulk-student-name" class="form-control" placeholder="Contoh: Budi Santoso" value="Mahasiswa Peneliti">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Nama Kampus / Universitas</label>
+                  <input type="text" id="bulk-university" class="form-control" placeholder="Contoh: Universitas Gadjah Mada" value="Perguruan Tinggi">
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                <div style="font-size:12px; color:var(--text-muted);">
+                  💡 Output pesan 100% Bahasa Indonesia dan langsung siap dikirim via WhatsApp / Email.
+                </div>
+                <button type="submit" class="btn btn-primary" id="btn-generate-bulk">
+                  ⚡ Generate Pesan Massal AI
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Outreach Table Card -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Daftar Pesan Outreach & Broadcast</h3>
+                <p style="font-size: 12.5px; color: var(--text-muted);">Kelola draf pesan yang sudah digenerate AI atau dibuat manual.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="app.openModalAddOutreach()">+ Draf Manual</button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bisnis Target</th>
+                    <th>Kontak (HP/Email)</th>
+                    <th>Subjek / Ringkasan</th>
+                    <th>Status</th>
+                    <th>Aksi Langsung</th>
+                  </tr>
+                </thead>
+                <tbody id="outreach-table-body">
+                  <tr><td colspan="5" class="empty-state">Belum ada outreach yang dibuat.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 8. EXPORT VIEW -->
+        <section class="tab-pane" id="pane-export">
+          <div class="card">
+            <div class="card-header">
+              <h3>Ekspor Data Riset</h3>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">
+              Unduh seluruh data bisnis, scoring, dan analisis ke format file yang Anda inginkan untuk lampiran proposal atau olah data di Spreadsheet.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+              <div class="card" style="border: 1px dashed var(--accent-primary); text-align: center;">
+                <h4 style="margin-bottom: 8px;">📊 Format CSV (Excel)</h4>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px;">Cocok untuk dibuka di Microsoft Excel, Google Sheets, atau SPSS.</p>
+                <a href="/api/export?format=csv" class="btn btn-primary" download="research_prospects.csv">Download CSV</a>
+              </div>
+
+              <div class="card" style="border: 1px dashed var(--accent-purple); text-align: center;">
+                <h4 style="margin-bottom: 8px;">📑 Format Markdown (.md)</h4>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px;">Cocok untuk laporan Notion, Obsidian, atau dokumentasi skripsi.</p>
+                <a href="/api/export?format=markdown" class="btn btn-secondary" download="research_prospects.md">Download Markdown</a>
+              </div>
+
+              <div class="card" style="border: 1px dashed var(--accent-success); text-align: center;">
+                <h4 style="margin-bottom: 8px;">🤖 Format JSON</h4>
+                <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px;">Format raw JSON lengkap untuk integrasi API atau developer.</p>
+                <a href="/api/export?format=json" class="btn btn-secondary" download="research_prospects.json">Download JSON</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 9. SETTINGS VIEW -->
+        <section class="tab-pane" id="pane-settings">
+          <div class="card">
+            <div class="card-header">
+              <h3>Konfigurasi Sistem</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <tbody id="settings-table-body">
+                  <tr><td>Memuat konfigurasi...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Business Detail Modal -->
+  <div class="modal-overlay" id="modal-biz-detail">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-biz-name">Detail Bisnis</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-biz-detail')">✕</button>
+      </div>
+      <div class="modal-body" id="modal-biz-content">
+        Memuat...
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Topic Modal -->
+  <div class="modal-overlay" id="modal-add-topic">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Tambah Topik Riset Baru</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-add-topic')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-add-topic" onsubmit="event.preventDefault(); app.submitNewTopic();">
+          <div class="form-group">
+            <label class="form-label">Bisnis Target</label>
+            <select id="modal-topic-biz-select" class="form-select" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Judul Topik Skripsi</label>
+            <input type="text" id="modal-topic-title" class="form-control" placeholder="Contoh: Pengembangan Sistem Inventory Terintegrasi..." required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rumusan Masalah</label>
+            <textarea id="modal-topic-problem" class="form-control" rows="3" placeholder="Deskripsikan masalah operasional yang diangkat..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Solusi Sistem yang Diusulkan</label>
+            <textarea id="modal-topic-system" class="form-control" rows="3" placeholder="Sistem atau aplikasi apa yang akan dibuat..."></textarea>
+          </div>
+          <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-add-topic')">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan Topik</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Outreach Modal -->
+  <div class="modal-overlay" id="modal-add-outreach">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Buat Draft Email Outreach</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-add-outreach')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-add-outreach" onsubmit="event.preventDefault(); app.submitNewOutreach();">
+          <div class="form-group">
+            <label class="form-label">Pilih Bisnis Target</label>
+            <select id="modal-outreach-biz-select" class="form-select" onchange="app.onOutreachBizChange(this.value)" required></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email Tujuan</label>
+            <input type="email" id="modal-outreach-email" class="form-control" placeholder="owner@business.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subjek Email</label>
+            <input type="text" id="modal-outreach-subject" class="form-control" value="Permohonan Wawancara & Studi Kasus Riset Skripsi" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Isi Surat / Pesan</label>
+            <textarea id="modal-outreach-body" class="form-control" rows="8" required></textarea>
+          </div>
+          <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-add-outreach')">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan Draft</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

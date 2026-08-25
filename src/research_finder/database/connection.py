@@ -14,10 +14,16 @@ _engine = None
 _session_factory = None
 
 
+from pathlib import Path
+
 def get_engine():
     global _engine
     if _engine is None:
         settings = get_settings()
+        if "sqlite" in settings.database_url:
+            db_path_str = settings.database_url.split("///")[-1]
+            if db_path_str and db_path_str != ":memory:":
+                Path(db_path_str).parent.mkdir(parents=True, exist_ok=True)
         _engine = create_async_engine(settings.database_url, echo=False)
     return _engine
 
