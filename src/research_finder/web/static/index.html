@@ -216,11 +216,20 @@
               <div class="form-row">
                 <div class="form-group" style="grid-column: span 2;">
                   <label class="form-label">Lokasi Pencarian (Nama Kota, Kecamatan, atau Alamat)</label>
-                  <input type="text" id="scan-location" class="form-control" placeholder="Contoh: Kaliurang, Yogyakarta atau Malang, Jawa Timur" required>
+                  <div style="display: flex; gap: 8px; align-items: stretch;">
+                    <input type="text" id="scan-location" class="form-control" placeholder="Contoh: Kaliurang, Yogyakarta atau Malang, Jawa Timur" style="flex: 1;">
+                    <button type="button" class="btn btn-secondary" id="btn-detect-location" onclick="app.detectLocation()" title="Deteksi lokasi otomatis dari perangkat Anda" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="9"/></svg>
+                      Lokasi Saya
+                    </button>
+                  </div>
+                  <input type="hidden" id="scan-latitude" value="">
+                  <input type="hidden" id="scan-longitude" value="">
+                  <small id="scan-location-info" style="display:none; color: var(--accent-primary); margin-top: 4px; font-size: 11.5px;"></small>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Radius Pencarian (km)</label>
-                  <input type="number" id="scan-radius" class="form-control" min="1" max="25" value="5" step="0.5">
+                  <label class="form-label">Radius Pencarian (km, maks 50)</label>
+                  <input type="number" id="scan-radius" class="form-control" min="1" max="50" value="5" step="0.5">
                 </div>
               </div>
 
@@ -265,6 +274,7 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th>#</th>
                     <th>Nama Bisnis</th>
                     <th>Kategori</th>
                     <th>Alamat</th>
@@ -274,6 +284,30 @@
                 </thead>
                 <tbody id="scan-results-body"></tbody>
               </table>
+            </div>
+
+            <!-- Scan Results Pagination Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--bg-card-border); flex-wrap: wrap; gap: 12px;" id="scan-pagination-bar">
+              <span style="font-size: 13px; color: var(--text-secondary);" id="scan-page-range-info">Menampilkan 0 dari 0 bisnis</span>
+              
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary);">
+                  <span>Tampilkan:</span>
+                  <select id="scan-page-size" class="form-select" style="width: auto; padding: 4px 10px; font-size: 12.5px;" onchange="app.changeScannedPageSize(this.value)">
+                    <option value="25" selected>25 / halaman</option>
+                    <option value="50">50 / halaman</option>
+                    <option value="100">100 / halaman</option>
+                    <option value="250">250 / halaman</option>
+                    <option value="0">Tampilkan Semua</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 6px; align-items: center;" id="scan-pagination-nav">
+                  <button class="btn btn-secondary btn-sm" id="btn-scan-page-prev" onclick="app.scannedPrevPage()">◀ Sebelumnya</button>
+                  <span style="font-size: 13px; font-weight: 600; padding: 0 4px;" id="scan-page-indicator">Hal 1 / 1</span>
+                  <button class="btn btn-secondary btn-sm" id="btn-scan-page-next" onclick="app.scannedNextPage()">Selanjutnya ▶</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>

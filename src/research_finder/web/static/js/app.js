@@ -6,6 +6,8 @@ class App {
   constructor() {
     this.currentTab = 'dashboard';
     this.scannedBusinesses = [];
+    this.scannedPage = 1;
+    this.scannedPageSize = 25;
     this.businessesCache = [];
     this.savedSortCol = 'id';
     this.savedSortDir = 'desc';
@@ -63,6 +65,16 @@ class App {
     document.getElementById('btn-refresh')?.addEventListener('click', () => {
       this.refreshCurrentTab();
       this.showToast('Data berhasil diperbarui', 'success');
+    });
+
+    // Clear auto-detected coordinates when user manually types a location
+    document.getElementById('scan-location')?.addEventListener('input', () => {
+      const latInput = document.getElementById('scan-latitude');
+      const lonInput = document.getElementById('scan-longitude');
+      const infoEl = document.getElementById('scan-location-info');
+      if (latInput) latInput.value = '';
+      if (lonInput) lonInput.value = '';
+      if (infoEl) infoEl.style.display = 'none';
     });
   }
 
@@ -179,14 +191,96 @@ class App {
   }
 
   // --- 2. Discovery / Scanner ---
+
+  async detectLocation() {
+    const btn = document.getElementById('btn-detect-location');
+    const locationInput = document.getElementById('scan-location');
+    const latInput = document.getElementById('scan-latitude');
+    const lonInput = document.getElementById('scan-longitude');
+    const infoEl = document.getElementById('scan-location-info');
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Mendeteksi...`;
+
+    // Clear previous coordinates
+    latInput.value = '';
+    lonInput.value = '';
+    infoEl.style.display = 'none';
+
+    try {
+      // Strategy 1: Browser Geolocation API (GPS / Wi-Fi / cell tower)
+      if (navigator.geolocation) {
+        try {
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 300000,  // Cache 5 minutes
+            });
+          });
+
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+
+          // Reverse geocode to get readable address
+          try {
+            const revRes = await fetch(`/api/discovery/reverse-geocode?lat=${lat}&lon=${lon}`);
+            if (revRes.ok) {
+              const revData = await revRes.json();
+              locationInput.value = revData.address;
+            } else {
+              locationInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            }
+          } catch {
+            locationInput.value = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+          }
+
+          latInput.value = lat;
+          lonInput.value = lon;
+          infoEl.textContent = `Koordinat terdeteksi: ${lat.toFixed(6)}, ${lon.toFixed(6)} (via GPS/perangkat)`;
+          infoEl.style.display = 'block';
+          this.showToast('Lokasi berhasil terdeteksi dari perangkat!', 'success');
+          return;
+
+        } catch (geoError) {
+          // Browser geolocation failed, fall through to server-side
+          console.warn('Browser geolocation failed:', geoError.message);
+        }
+      }
+
+      // Strategy 2: Server-side IP-based geolocation (fallback)
+      const res = await fetch('/api/discovery/auto-location');
+      if (res.ok) {
+        const data = await res.json();
+        locationInput.value = data.address || `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
+        latInput.value = data.latitude;
+        lonInput.value = data.longitude;
+        infoEl.textContent = `Koordinat terdeteksi: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)} (via IP address - perkiraan)`;
+        infoEl.style.display = 'block';
+        this.showToast('Lokasi terdeteksi dari IP (perkiraan). Untuk akurasi lebih, izinkan akses lokasi di browser.', 'info');
+      } else {
+        throw new Error('Gagal mendeteksi lokasi');
+      }
+
+    } catch (err) {
+      console.error('Detection error:', err);
+      this.showToast('Gagal mendeteksi lokasi otomatis. Pastikan server web telah direstart dan akses lokasi diizinkan.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="9"/></svg> Lokasi Saya`;
+    }
+  }
+
   async startScan() {
     const loc = document.getElementById('scan-location').value.trim();
     const radius = parseFloat(document.getElementById('scan-radius').value) || 5;
     const catCheckboxes = document.querySelectorAll('input[name="cat"]:checked');
     const categories = Array.from(catCheckboxes).map(c => c.value);
+    const lat = document.getElementById('scan-latitude').value;
+    const lon = document.getElementById('scan-longitude').value;
 
-    if (!loc) {
-      this.showToast('Masukkan lokasi pencarian terlebih dahulu', 'error');
+    if (!loc && !lat) {
+      this.showToast('Masukkan lokasi pencarian atau gunakan tombol "Lokasi Saya"', 'error');
       return;
     }
 
@@ -195,10 +289,20 @@ class App {
     btn.innerHTML = `<span class="spinner"></span> Mencari data OSM...`;
 
     try {
+      // Build request body - include coordinates if available
+      const body = { radius_km: radius, categories: categories };
+      if (lat && lon) {
+        body.latitude = parseFloat(lat);
+        body.longitude = parseFloat(lon);
+        if (loc) body.location = loc;
+      } else {
+        body.location = loc;
+      }
+
       const res = await fetch('/api/discovery/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location: loc, radius_km: radius, categories: categories })
+        body: JSON.stringify(body)
       });
 
       if (!res.ok) {
@@ -208,6 +312,7 @@ class App {
 
       const data = await res.json();
       this.scannedBusinesses = data.businesses || [];
+      this.scannedPage = 1;
 
       const resultsCard = document.getElementById('scan-results-card');
       resultsCard.style.display = 'block';
@@ -215,30 +320,88 @@ class App {
       document.getElementById('scan-summary-text').textContent =
         `Ditemukan ${this.scannedBusinesses.length} bisnis di sekitar "${data.location}" (Radius ${radius} km).`;
 
-      const tbody = document.getElementById('scan-results-body');
-      if (this.scannedBusinesses.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Tidak ada bisnis ditemukan dengan filter tersebut. Coba perbesar radius atau gunakan nama kota yang lebih umum.</td></tr>`;
-      } else {
-        tbody.innerHTML = this.scannedBusinesses.map(b => `
-          <tr>
-            <td><b>${this.escapeHtml(b.name)}</b></td>
-            <td><span class="badge badge-purple">${this.escapeHtml(b.category || '-')}</span></td>
-            <td><small>${this.escapeHtml(b.address || '-')}</small></td>
-            <td>
-              ${b.website ? `<a href="${b.website}" target="_blank" style="color:var(--accent-primary); text-decoration:underline;">Website</a>` : '<span style="color:var(--text-muted)">-</span>'}
-              ${b.phone ? `<br><small>${b.phone}</small>` : ''}
-            </td>
-            <td>⭐ ${b.rating || '-'} (${b.review_count || 0})</td>
-          </tr>
-        `).join('');
-      }
-
+      this.renderScannedResults();
       this.showToast(`Berhasil menemukan ${this.scannedBusinesses.length} bisnis!`, 'success');
     } catch (err) {
       this.showToast(err.message, 'error');
     } finally {
       btn.disabled = false;
       btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Mulai Scanning`;
+    }
+  }
+
+  renderScannedResults() {
+    const total = this.scannedBusinesses.length;
+    const tbody = document.getElementById('scan-results-body');
+    const rangeInfo = document.getElementById('scan-page-range-info');
+    const pageIndicator = document.getElementById('scan-page-indicator');
+    const btnPrev = document.getElementById('btn-scan-page-prev');
+    const btnNext = document.getElementById('btn-scan-page-next');
+
+    if (!tbody) return;
+
+    if (total === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Tidak ada bisnis ditemukan dengan filter tersebut. Coba perbesar radius atau gunakan nama kota yang lebih umum.</td></tr>`;
+      if (rangeInfo) rangeInfo.textContent = 'Menampilkan 0 dari 0 bisnis';
+      if (pageIndicator) pageIndicator.textContent = 'Hal 1 / 1';
+      if (btnPrev) btnPrev.disabled = true;
+      if (btnNext) btnNext.disabled = true;
+      return;
+    }
+
+    const pageSize = parseInt(this.scannedPageSize, 10) || 0;
+    const totalPages = pageSize > 0 ? Math.ceil(total / pageSize) : 1;
+
+    if (this.scannedPage < 1) this.scannedPage = 1;
+    if (this.scannedPage > totalPages) this.scannedPage = totalPages;
+
+    const startIdx = pageSize > 0 ? (this.scannedPage - 1) * pageSize : 0;
+    const endIdx = pageSize > 0 ? Math.min(startIdx + pageSize, total) : total;
+    const pageItems = this.scannedBusinesses.slice(startIdx, endIdx);
+
+    tbody.innerHTML = pageItems.map((b, idx) => `
+      <tr>
+        <td><small style="color:var(--text-muted);">${startIdx + idx + 1}</small></td>
+        <td><b>${this.escapeHtml(b.name)}</b></td>
+        <td><span class="badge badge-purple">${this.escapeHtml(b.category || '-')}</span></td>
+        <td><small>${this.escapeHtml(b.address || '-')}</small></td>
+        <td>
+          ${b.website ? `<a href="${b.website}" target="_blank" style="color:var(--accent-primary); text-decoration:underline;">Website</a>` : '<span style="color:var(--text-muted)">-</span>'}
+          ${b.phone ? `<br><small>${b.phone}</small>` : ''}
+        </td>
+        <td>⭐ ${b.rating || '-'} (${b.review_count || 0})</td>
+      </tr>
+    `).join('');
+
+    if (rangeInfo) {
+      rangeInfo.textContent = `Menampilkan ${startIdx + 1}-${endIdx} dari ${total} bisnis`;
+    }
+    if (pageIndicator) {
+      pageIndicator.textContent = `Hal ${this.scannedPage} / ${totalPages}`;
+    }
+    if (btnPrev) btnPrev.disabled = (this.scannedPage <= 1);
+    if (btnNext) btnNext.disabled = (this.scannedPage >= totalPages);
+  }
+
+  changeScannedPageSize(val) {
+    this.scannedPageSize = parseInt(val, 10) || 0;
+    this.scannedPage = 1;
+    this.renderScannedResults();
+  }
+
+  scannedPrevPage() {
+    if (this.scannedPage > 1) {
+      this.scannedPage--;
+      this.renderScannedResults();
+    }
+  }
+
+  scannedNextPage() {
+    const pageSize = parseInt(this.scannedPageSize, 10) || 0;
+    const totalPages = pageSize > 0 ? Math.ceil(this.scannedBusinesses.length / pageSize) : 1;
+    if (this.scannedPage < totalPages) {
+      this.scannedPage++;
+      this.renderScannedResults();
     }
   }
 

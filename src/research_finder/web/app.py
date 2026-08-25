@@ -36,6 +36,7 @@ from research_finder.domain.models import (
     LocationQuery,
     ScoreBreakdown,
 )
+from research_finder.providers.location import geocode_address, get_current_location, reverse_geocode
 from research_finder.providers.nominatim import NominatimProvider
 from research_finder.providers.openai_provider import OpenAIProvider
 
@@ -46,7 +47,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # --- Pydantic Schemas ---
 class ScanRequest(BaseModel):
-    location: str
+    location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     radius_km: float = 5.0
     min_rating: float = 0.0
     min_reviews: int = 0
@@ -427,18 +430,79 @@ def create_app() -> FastAPI:
 
     # --- Discovery & Scanning ---
 
+    @app.get("/api/discovery/auto-location")
+    async def detect_location() -> dict[str, Any]:
+        """Detect user location via IP geolocation (server-side fallback)."""
+        loc = await get_current_location()
+        if loc is None:
+            raise HTTPException(status_code=503, detail="Tidak dapat mendeteksi lokasi otomatis dari IP.")
+
+        address = loc.address or ""
+        try:
+            rev = await reverse_geocode(loc.latitude, loc.longitude)
+            if rev:
+                address = rev
+        except Exception:
+            pass
+
+        return {
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "address": address,
+        }
+
+    @app.get("/api/discovery/reverse-geocode")
+    async def reverse_geocode_endpoint(lat: float, lon: float) -> dict[str, Any]:
+        """Convert coordinates to a human-readable address."""
+        address = await reverse_geocode(lat, lon)
+        if not address:
+            raise HTTPException(status_code=404, detail="Tidak dapat menemukan alamat untuk koordinat tersebut.")
+        return {"address": address, "latitude": lat, "longitude": lon}
+
     @app.post("/api/discovery/scan")
     async def scan_businesses(req: ScanRequest) -> dict[str, Any]:
         provider = NominatimProvider()
-        lat, lon = await provider.geocode(req.location)
-        if lat is None or lon is None:
-            raise HTTPException(status_code=400, detail=f"Location not found: '{req.location}'")
+
+        lat: float | None = None
+        lon: float | None = None
+        display_location = req.location or ""
+
+        # If coordinates are directly provided (from browser geolocation)
+        if req.latitude is not None and req.longitude is not None:
+            lat = req.latitude
+            lon = req.longitude
+            # Try to get a readable address if not provided
+            if not display_location:
+                try:
+                    rev_addr = await reverse_geocode(lat, lon)
+                    if rev_addr:
+                        display_location = rev_addr
+                    else:
+                        display_location = f"{lat:.4f}, {lon:.4f}"
+                except Exception:
+                    display_location = f"{lat:.4f}, {lon:.4f}"
+        elif req.location:
+            # Geocode the text address to coordinates
+            geo_result = await geocode_address(req.location)
+            if geo_result is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Lokasi tidak ditemukan: '{req.location}'. Coba gunakan nama kota yang lebih umum.",
+                )
+            lat = geo_result.latitude
+            lon = geo_result.longitude
+            display_location = geo_result.address or req.location
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Berikan lokasi pencarian (teks) atau koordinat (latitude/longitude).",
+            )
 
         location = LocationQuery(
             latitude=lat,
             longitude=lon,
             radius_km=req.radius_km,
-            address=req.location,
+            address=display_location,
         )
         filters = DiscoveryFilters(
             min_rating=req.min_rating,
@@ -454,7 +518,7 @@ def create_app() -> FastAPI:
         )
 
         return {
-            "location": req.location,
+            "location": display_location,
             "latitude": lat,
             "longitude": lon,
             "count": len(discovered),
