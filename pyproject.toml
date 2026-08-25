@@ -5,15 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "research-finder"
 version = "0.1.0"
-description = "A CLI tool for discovering local businesses as research/skripsi objects"
+description = "Web Application for discovering and analyzing local businesses as research/skripsi objects"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Research Finder" }]
 dependencies = [
-    "rich>=13.0",
-    "textual>=0.82",
-    "questionary>=2.0",
     "sqlalchemy>=2.0",
     "aiosqlite>=0.19",
     "pydantic>=2.0",
@@ -22,6 +19,8 @@ dependencies = [
     "httpx>=0.25",
     "beautifulsoup4>=4.12",
     "lxml>=5.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +33,7 @@ dev = [
 
 [project.scripts]
 research-finder = "research_finder.cli.main:main"
-research-finder-tui = "research_finder.cli.tui.app:main"
+research-finder-web = "research_finder.web.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/research_finder"]
@@ -55,4 +54,3 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
