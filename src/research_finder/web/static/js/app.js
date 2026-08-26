@@ -8,6 +8,12 @@ class App {
     this.scannedBusinesses = [];
     this.scannedPage = 1;
     this.scannedPageSize = 25;
+    const savedLat = localStorage.getItem('rf_scan_lat');
+    const savedLon = localStorage.getItem('rf_scan_lon');
+    this.scanOriginLat = savedLat ? parseFloat(savedLat) : null;
+    this.scanOriginLon = savedLon ? parseFloat(savedLon) : null;
+    this.scanMap = null;
+    this.scanMarker = null;
     this.businessesCache = [];
     this.savedSortCol = 'id';
     this.savedSortDir = 'desc';
@@ -17,6 +23,7 @@ class App {
     this.initTheme();
     this.bindEvents();
     this.loadInitialData();
+    this.ensureScanMap();
   }
 
   // --- Theme Management (Dark / Light) ---
@@ -115,10 +122,16 @@ class App {
 
     // Lazy load tab data
     this.refreshCurrentTab();
+
+    if (tabName === 'discover') {
+      setTimeout(() => this.ensureScanMap(), 50);
+      setTimeout(() => this.ensureScanMap(), 300);
+    }
   }
 
   refreshCurrentTab() {
     if (this.currentTab === 'dashboard') this.loadDashboard();
+    else if (this.currentTab === 'discover') this.ensureScanMap();
     else if (this.currentTab === 'saved') {
       this.loadCategoriesDropdown();
       this.loadSavedBusinesses();
@@ -130,10 +143,28 @@ class App {
     else if (this.currentTab === 'settings') this.loadSettings();
   }
 
-  loadInitialData() {
+  async loadInitialData() {
     this.loadDashboard();
     this.checkAIStatus();
     this.loadCategoriesDropdown();
+    this.loadLastScanLocationFromDB();
+  }
+
+  async loadLastScanLocationFromDB() {
+    try {
+      const res = await fetch('/api/discovery/last-location');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.latitude != null && data.longitude != null) {
+          this.scanOriginLat = data.latitude;
+          this.scanOriginLon = data.longitude;
+          localStorage.setItem('rf_scan_lat', data.latitude.toString());
+          localStorage.setItem('rf_scan_lon', data.longitude.toString());
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load last scan location from DB:', err);
+    }
   }
 
   // --- AI Status Check ---
@@ -190,6 +221,133 @@ class App {
     }
   }
 
+  // --- Map & Geolocation Helpers ---
+
+  ensureScanMap() {
+    const mapContainer = document.getElementById('scan-map');
+    if (!mapContainer) return;
+    if (typeof L === 'undefined') {
+      console.warn('Leaflet JS is not loaded yet');
+      return;
+    }
+
+    // Fix Leaflet default marker icon paths for local bundling
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: '/static/css/images/marker-icon-2x.png',
+      iconUrl: '/static/css/images/marker-icon.png',
+      shadowUrl: '/static/css/images/marker-shadow.png',
+    });
+
+    if (!this.scanMap) {
+      // Default center: Jakarta, Indonesia
+      const defaultLat = -6.2088;
+      const defaultLon = 106.8456;
+
+      this.scanMap = L.map('scan-map', {
+        center: [defaultLat, defaultLon],
+        zoom: 12,
+        zoomControl: true,
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(this.scanMap);
+
+      // Click on map to set pin
+      this.scanMap.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        this.updateMapPin(lat, lng);
+
+        // Update hidden fields
+        document.getElementById('scan-latitude').value = lat;
+        document.getElementById('scan-longitude').value = lng;
+
+        // Reverse geocode to get address
+        const infoEl = document.getElementById('scan-location-info');
+        const locationInput = document.getElementById('scan-location');
+        try {
+          const revRes = await fetch(`/api/discovery/reverse-geocode?lat=${lat}&lon=${lng}`);
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            locationInput.value = revData.address;
+          } else {
+            locationInput.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          }
+        } catch {
+          locationInput.value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        }
+        if (infoEl) {
+          infoEl.textContent = `Koordinat dipilih: ${lat.toFixed(6)}, ${lng.toFixed(6)} (via peta)`;
+          infoEl.style.display = 'block';
+        }
+      });
+    }
+
+    // Force Leaflet to recalculate tile size in case tab was previously hidden
+    setTimeout(() => {
+      if (this.scanMap) {
+        this.scanMap.invalidateSize();
+      }
+    }, 100);
+  }
+
+  updateMapPin(lat, lon) {
+    this.scanOriginLat = lat;
+    this.scanOriginLon = lon;
+    localStorage.setItem('rf_scan_lat', lat.toString());
+    localStorage.setItem('rf_scan_lon', lon.toString());
+    if (!this.scanMap) {
+      this.ensureScanMap();
+    }
+    if (!this.scanMap) return;
+    if (this.scanMarker) {
+      this.scanMarker.setLatLng([lat, lon]);
+    } else {
+      this.scanMarker = L.marker([lat, lon], { draggable: true }).addTo(this.scanMap);
+      // Allow dragging the marker to fine-tune location
+      this.scanMarker.on('dragend', async (e) => {
+        const pos = e.target.getLatLng();
+        document.getElementById('scan-latitude').value = pos.lat;
+        document.getElementById('scan-longitude').value = pos.lng;
+        const infoEl = document.getElementById('scan-location-info');
+        const locationInput = document.getElementById('scan-location');
+        try {
+          const revRes = await fetch(`/api/discovery/reverse-geocode?lat=${pos.lat}&lon=${pos.lng}`);
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            locationInput.value = revData.address;
+          } else {
+            locationInput.value = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+          }
+        } catch {
+          locationInput.value = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+        }
+        if (infoEl) {
+          infoEl.textContent = `Koordinat dipindahkan: ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} (via drag pin)`;
+          infoEl.style.display = 'block';
+        }
+      });
+    }
+    this.scanMap.setView([lat, lon], Math.max(this.scanMap.getZoom(), 14));
+  }
+
+  haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth radius in meters
+    const toRad = (v) => v * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  formatDistance(meters) {
+    if (meters == null) return '-';
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+  }
+
   // --- 2. Discovery / Scanner ---
 
   async detectLocation() {
@@ -237,6 +395,7 @@ class App {
 
           latInput.value = lat;
           lonInput.value = lon;
+          this.updateMapPin(lat, lon);
           infoEl.textContent = `Koordinat terdeteksi: ${lat.toFixed(6)}, ${lon.toFixed(6)} (via GPS/perangkat)`;
           infoEl.style.display = 'block';
           this.showToast('Lokasi berhasil terdeteksi dari perangkat!', 'success');
@@ -255,6 +414,7 @@ class App {
         locationInput.value = data.address || `${data.latitude.toFixed(4)}, ${data.longitude.toFixed(4)}`;
         latInput.value = data.latitude;
         lonInput.value = data.longitude;
+        this.updateMapPin(data.latitude, data.longitude);
         infoEl.textContent = `Koordinat terdeteksi: ${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)} (via IP address - perkiraan)`;
         infoEl.style.display = 'block';
         this.showToast('Lokasi terdeteksi dari IP (perkiraan). Untuk akurasi lebih, izinkan akses lokasi di browser.', 'info');
@@ -311,8 +471,52 @@ class App {
       }
 
       const data = await res.json();
-      this.scannedBusinesses = data.businesses || [];
+      let businesses = data.businesses || [];
       this.scannedPage = 1;
+      this.scanOriginLat = data.latitude;
+      this.scanOriginLon = data.longitude;
+      if (data.latitude != null && data.longitude != null) {
+        localStorage.setItem('rf_scan_lat', data.latitude.toString());
+        localStorage.setItem('rf_scan_lon', data.longitude.toString());
+      }
+
+      // Filter by value-added contact criteria if checked
+      const filterPhone = document.getElementById('scan-filter-contact')?.checked;
+      const filterWeb = document.getElementById('scan-filter-web')?.checked;
+      const filterEmail = document.getElementById('scan-filter-email')?.checked;
+      const filterHasAny = document.getElementById('scan-filter-has-any')?.checked;
+
+      if (filterPhone) {
+        businesses = businesses.filter(b => b.phone && b.phone.trim() !== '');
+      }
+      if (filterWeb) {
+        businesses = businesses.filter(b => b.website && b.website.trim() !== '');
+      }
+      if (filterEmail) {
+        businesses = businesses.filter(b => b.email && b.email.trim() !== '');
+      }
+      if (filterHasAny) {
+        businesses = businesses.filter(b =>
+          (b.phone && b.phone.trim() !== '') ||
+          (b.website && b.website.trim() !== '') ||
+          (b.email && b.email.trim() !== '') ||
+          (b.rating && b.rating > 0)
+        );
+      }
+
+      this.scannedBusinesses = businesses;
+
+      // Compute distance for every business
+      this.scannedBusinesses.forEach(b => {
+        if (this.scanOriginLat != null && this.scanOriginLon != null && b.latitude != null && b.longitude != null) {
+          const dist = this.haversineDistance(this.scanOriginLat, this.scanOriginLon, b.latitude, b.longitude);
+          b.distance_m = dist;
+          b.distance_text = this.formatDistance(dist);
+        }
+      });
+
+      // Sort by distance (closest first)
+      this.scannedBusinesses.sort((a, b) => (a.distance_m != null ? a.distance_m : Infinity) - (b.distance_m != null ? b.distance_m : Infinity));
 
       const resultsCard = document.getElementById('scan-results-card');
       resultsCard.style.display = 'block';
@@ -359,19 +563,43 @@ class App {
     const endIdx = pageSize > 0 ? Math.min(startIdx + pageSize, total) : total;
     const pageItems = this.scannedBusinesses.slice(startIdx, endIdx);
 
-    tbody.innerHTML = pageItems.map((b, idx) => `
+    tbody.innerHTML = pageItems.map((b, idx) => {
+      // Calculate distance on the fly if needed
+      let distVal = b.distance_text;
+      if (!distVal && b.distance_m != null) {
+        distVal = this.formatDistance(b.distance_m);
+      }
+      if ((!distVal || distVal === '-') && this.scanOriginLat != null && this.scanOriginLon != null && b.latitude != null && b.longitude != null) {
+        const dist = this.haversineDistance(this.scanOriginLat, this.scanOriginLon, b.latitude, b.longitude);
+        distVal = this.formatDistance(dist);
+      }
+      if (!distVal) distVal = '-';
+
+      const gmapsQuery = encodeURIComponent(`${b.name} ${b.address || ''}`.trim());
+      const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${gmapsQuery}`;
+      const waLink = b.phone ? this.formatWaUrl(b.phone, `Halo Bapak/Ibu pengelola ${b.name}, perkenalkan saya mahasiswa yang sedang melakukan riset skripsi.`) : null;
+
+      return `
       <tr>
         <td><small style="color:var(--text-muted);">${startIdx + idx + 1}</small></td>
-        <td><b>${this.escapeHtml(b.name)}</b></td>
+        <td>
+          <b>${this.escapeHtml(b.name)}</b>
+          <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+            <a href="${gmapsUrl}" target="_blank" class="badge-social badge-maps" title="Lihat Profil & Tempat di Google Maps">📍 Maps</a>
+            ${b.website ? `<a href="${b.website}" target="_blank" class="badge-social badge-web" title="Kunjungi Website/Sosmed">🌐 Web</a>` : ''}
+            ${waLink ? `<a href="${waLink}" target="_blank" class="badge-social badge-wa" title="Chat WhatsApp">💬 WA</a>` : ''}
+            ${b.email ? `<a href="mailto:${b.email}" class="badge-social badge-purple" title="Kirim Email">✉️ Email</a>` : ''}
+          </div>
+        </td>
         <td><span class="badge badge-purple">${this.escapeHtml(b.category || '-')}</span></td>
         <td><small>${this.escapeHtml(b.address || '-')}</small></td>
+        <td><span class="badge" style="background: rgba(99, 102, 241, 0.12); color: var(--accent-primary); border: 1px solid rgba(99, 102, 241, 0.3); font-weight:600; white-space:nowrap;">📍 ${distVal}</span></td>
         <td>
           ${b.website ? `<a href="${b.website}" target="_blank" style="color:var(--accent-primary); text-decoration:underline;">Website</a>` : '<span style="color:var(--text-muted)">-</span>'}
           ${b.phone ? `<br><small>${b.phone}</small>` : ''}
         </td>
-        <td>⭐ ${b.rating || '-'} (${b.review_count || 0})</td>
       </tr>
-    `).join('');
+    `}).join('');
 
     if (rangeInfo) {
       rangeInfo.textContent = `Menampilkan ${startIdx + 1}-${endIdx} dari ${total} bisnis`;
@@ -490,6 +718,8 @@ class App {
       if (hasEmail) params.set('has_email', 'true');
       if (hasSocial) params.set('has_social', 'true');
       if (hasAI) params.set('has_ai', 'true');
+      if (this.savedSortCol) params.set('sort_col', this.savedSortCol);
+      if (this.savedSortDir) params.set('sort_dir', this.savedSortDir);
 
       const res = await fetch(`/api/businesses?${params.toString()}`);
       if (!res.ok) {
@@ -526,7 +756,7 @@ class App {
     } catch (err) {
       console.error('Failed to load saved businesses:', err);
       const tbody = document.getElementById('saved-table-body');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--accent-danger);">Gagal memuat data: ${this.escapeHtml(err.message)}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color:var(--accent-danger);">Gagal memuat data: ${this.escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -594,15 +824,14 @@ class App {
       this.savedSortDir = this.savedSortDir === 'asc' ? 'desc' : 'asc';
     } else {
       this.savedSortCol = col;
-      this.savedSortDir = (col === 'total_score' || col === 'rating') ? 'desc' : 'asc';
+      this.savedSortDir = (col === 'total_score') ? 'desc' : 'asc';
     }
     this.updateSortIcons();
-    this.applySavedSorting();
-    this.renderSavedBusinesses();
+    this.loadSavedBusinesses(1);
   }
 
   updateSortIcons() {
-    const cols = ['id', 'name', 'category', 'address', 'rating', 'total_score'];
+    const cols = ['id', 'name', 'category', 'address', 'distance', 'total_score'];
     cols.forEach(c => {
       const icon = document.getElementById(`sort-icon-${c}`);
       if (!icon) return;
@@ -620,6 +849,23 @@ class App {
     if (!this.businessesCache || this.businessesCache.length === 0) return;
     const col = this.savedSortCol || 'id';
     const dir = this.savedSortDir || 'desc';
+
+    if (col === 'distance') {
+      this.businessesCache.sort((a, b) => {
+        let distA = Infinity;
+        let distB = Infinity;
+        if (this.scanOriginLat != null && this.scanOriginLon != null) {
+          if (a.latitude != null && a.longitude != null) {
+            distA = this.haversineDistance(this.scanOriginLat, this.scanOriginLon, a.latitude, a.longitude);
+          }
+          if (b.latitude != null && b.longitude != null) {
+            distB = this.haversineDistance(this.scanOriginLat, this.scanOriginLon, b.latitude, b.longitude);
+          }
+        }
+        return dir === 'asc' ? (distA - distB) : (distB - distA);
+      });
+      return;
+    }
 
     this.businessesCache.sort((a, b) => {
       let valA = a[col];
@@ -656,13 +902,20 @@ class App {
       const gmapsQuery = encodeURIComponent(`${b.name} ${b.address || ''}`.trim());
       const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${gmapsQuery}`;
 
+      // Calculate distance from scan origin if available
+      let distText = '-';
+      if (this.scanOriginLat != null && this.scanOriginLon != null && b.latitude != null && b.longitude != null) {
+        const dist = this.haversineDistance(this.scanOriginLat, this.scanOriginLon, b.latitude, b.longitude);
+        distText = this.formatDistance(dist);
+      }
+
       return `
       <tr>
         <td><code>#${b.id}</code></td>
         <td>
           <b>${this.escapeHtml(b.name)}</b>
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
-            <a href="${gmapsUrl}" target="_blank" class="badge-social badge-maps" title="Lihat Profil, Ulasan & Rating di Google Maps">📍 Maps</a>
+            <a href="${gmapsUrl}" target="_blank" class="badge-social badge-maps" title="Lihat Profil & Tempat di Google Maps">📍 Maps</a>
             ${b.website ? `<a href="${b.website}" target="_blank" class="badge-social badge-web" title="Kunjungi Website">🌐 Web</a>` : ''}
             ${waLink ? `<a href="${waLink}" target="_blank" class="badge-social badge-wa" title="Chat WhatsApp">💬 WA</a>` : ''}
             ${b.email ? `<a href="mailto:${b.email}" class="badge-social badge-purple" title="Kirim Email">✉️ Email</a>` : ''}
@@ -670,7 +923,7 @@ class App {
         </td>
         <td><span class="badge badge-purple">${this.escapeHtml(b.category || '-')}</span></td>
         <td><small>${this.escapeHtml(b.address || '-')}</small></td>
-        <td>${(b.rating && b.rating > 0) ? `⭐ ${b.rating} <small>(${b.review_count || 0})</small>` : `<span style="color:var(--text-muted);" title="Data OpenStreetMap tidak memiliki ulasan rating bintang">-</span>`}</td>
+        <td><span class="badge" style="background: rgba(99, 102, 241, 0.12); color: var(--accent-primary); border: 1px solid rgba(99, 102, 241, 0.3); font-weight:600;">📍 ${distText}</span></td>
         <td>${b.total_score ? `<span class="badge badge-score">${b.total_score.toFixed(1)}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
         <td style="white-space:nowrap;">
           <button class="btn btn-secondary btn-sm" onclick="app.showBusinessDetail(${b.id})" title="Lihat Detail">Detail</button>
@@ -952,12 +1205,71 @@ class App {
   }
 
   // --- 7. Outreach & AI Bulk Generator ---
+  async updateOutreachFilterCount() {
+    const contactCheckboxes = document.querySelectorAll('input[name="bulk_contact"]:checked');
+    const contactTypes = Array.from(contactCheckboxes).map(c => c.value);
+
+    const catCheckboxes = document.querySelectorAll('input[name="bulk_cat"]:checked');
+    const categories = Array.from(catCheckboxes).map(c => c.value);
+
+    const minScore = parseFloat(document.getElementById('bulk-min-score')?.value) || 0;
+
+    try {
+      const res = await fetch('/api/outreach/matching-count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categories: categories.length > 0 ? categories : null,
+          contact_types: contactTypes.length > 0 ? contactTypes : null,
+          min_score: minScore
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const matching = data.matching_count || 0;
+        const total = data.total_all || 0;
+
+        const slider = document.getElementById('bulk-limit');
+        const infoEl = document.getElementById('bulk-matching-info');
+        const limitValEl = document.getElementById('bulk-limit-val');
+
+        if (slider) {
+          const maxVal = Math.max(1, matching);
+          slider.max = maxVal;
+          if (parseInt(slider.value, 10) > maxVal) {
+            slider.value = maxVal;
+          }
+          if (limitValEl) {
+            limitValEl.textContent = `${slider.value} bisnis`;
+          }
+        }
+
+        if (infoEl) {
+          infoEl.textContent = `Menemukan ${matching} bisnis yang sesuai filter (dari total ${total} bisnis tersimpan). Limit slider maks: ${matching}`;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update outreach matching count:', err);
+    }
+  }
+
   async runBulkAIGenerate() {
     const channel = document.getElementById('bulk-channel').value;
     const limit = parseInt(document.getElementById('bulk-limit').value) || 5;
-    const filterContact = document.getElementById('bulk-filter-contact').value;
-    const studentName = document.getElementById('bulk-student-name').value.trim() || 'Mahasiswa Peneliti';
-    const university = document.getElementById('bulk-university').value.trim() || 'Perguruan Tinggi';
+
+    const contactCheckboxes = document.querySelectorAll('input[name="bulk_contact"]:checked');
+    const contactTypes = Array.from(contactCheckboxes).map(c => c.value);
+
+    const catCheckboxes = document.querySelectorAll('input[name="bulk_cat"]:checked');
+    const categories = Array.from(catCheckboxes).map(c => c.value);
+
+    const minScore = parseFloat(document.getElementById('bulk-min-score')?.value) || 0;
+
+    const studentName = document.getElementById('bulk-student-name').value.trim() || 'Vega Setiawan';
+    const major = document.getElementById('bulk-major').value.trim() || 'S1 Sistem Informasi';
+    const university = document.getElementById('bulk-university').value.trim();
+    const promptContext = document.getElementById('bulk-prompt-context')?.value.trim();
 
     const btn = document.getElementById('btn-generate-bulk');
     btn.disabled = true;
@@ -970,9 +1282,13 @@ class App {
         body: JSON.stringify({
           limit: limit,
           channel: channel,
-          only_with_contacts: filterContact === 'with_contact',
+          categories: categories.length > 0 ? categories : null,
+          contact_types: contactTypes.length > 0 ? contactTypes : null,
+          min_score: minScore,
           student_name: studentName,
-          university: university
+          major: major,
+          university: university || null,
+          prompt_context: promptContext || null
         })
       });
 
@@ -982,7 +1298,7 @@ class App {
       }
 
       const data = await res.json();
-      this.showToast(`Berhasil menyusun ${data.generated_count} pesan personalisasi untuk ${channel.toUpperCase()}! 🎉`, 'success');
+      this.showToast(`Berhasil menyusun ${data.generated_count} pesan personalisasi AI!`, 'success');
       this.loadOutreach();
     } catch (err) {
       this.showToast(err.message, 'error');
@@ -993,6 +1309,7 @@ class App {
   }
 
   async loadOutreach() {
+    this.updateOutreachFilterCount();
     const tbody = document.getElementById('outreach-table-body');
     if (!tbody) return;
 

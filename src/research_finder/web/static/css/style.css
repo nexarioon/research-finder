@@ -951,3 +951,22 @@ body {
   margin-bottom: 12px;
 }
 
+/* Leaflet Map Picker Styles */
+#scan-map {
+  width: 100%;
+  height: 320px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--bg-card-border);
+  z-index: 1;
+  margin-top: 8px;
+}
+
+.leaflet-container {
+  background: #e5e3df !important;
+  font-family: inherit !important;
+}
+
+[data-theme="dark"] .leaflet-tile {
+  filter: brightness(0.85) contrast(1.1);
+}
+
