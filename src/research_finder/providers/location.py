@@ -110,3 +110,41 @@ async def reverse_geocode(lat: float, lon: float) -> str | None:
         logger.error("Reverse geocoding failed for (%.4f, %.4f): %s", lat, lon, e)
 
     return None
+
+
+def parse_maps_link(url_or_text: str) -> dict[str, Any]:
+    """Parse Google Maps URL or text link to extract coordinates and place name."""
+    import re
+    from urllib.parse import unquote
+
+    result: dict[str, Any] = {
+        "latitude": None,
+        "longitude": None,
+        "name": None,
+        "address": None,
+    }
+
+    if not url_or_text:
+        return result
+
+    # 1. Extract coordinates pattern @-6.12345,106.12345 or ll=-6.12345,106.12345 or q=-6.12345,106.12345
+    coord_match = re.search(r'[@?&](?:ll|q|center)=?(-?\d+\.\d+),(-?\d+\.\d+)', url_or_text)
+    if not coord_match:
+        coord_match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', url_or_text)
+
+    if coord_match:
+        try:
+            result["latitude"] = float(coord_match.group(1))
+            result["longitude"] = float(coord_match.group(2))
+        except ValueError:
+            pass
+
+    # 2. Extract place name pattern /place/Nama+Bisnis/ or /place/Nama%20Bisnis/
+    place_match = re.search(r'/place/([^/@?]+)', url_or_text)
+    if place_match:
+        raw_name = place_match.group(1).replace("+", " ")
+        cleaned_name = unquote(raw_name).strip()
+        if cleaned_name and not cleaned_name.startswith("http"):
+            result["name"] = cleaned_name
+
+    return result

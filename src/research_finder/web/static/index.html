@@ -213,6 +213,9 @@
           <div class="card">
             <div class="card-header">
               <h3>Cari Bisnis Lokal (OpenStreetMap / Nominatim)</h3>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.openModalAddManualBusiness()">
+                ➕ Tambah Tempat Manual / via Link Maps
+              </button>
             </div>
             <form id="form-scan" onsubmit="event.preventDefault(); app.startScan();">
               <div class="form-row">
@@ -341,6 +344,9 @@
                 <p style="font-size: 12.5px; color: var(--text-muted);" id="saved-header-info">Menampilkan database bisnis riset.</p>
               </div>
               <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-primary btn-sm" onclick="app.openModalAddManualBusiness()">
+                  ➕ Tambah Bisnis Manual
+                </button>
                 <button class="btn btn-danger btn-sm" onclick="app.clearAllSavedBusinesses()" title="Hapus semua data bisnis tersimpan di database">
                   🗑️ Hapus Semua Bisnis
                 </button>
@@ -608,6 +614,18 @@
                 </div>
 
                 <div class="form-group">
+                  <label class="form-label">Filter Radius Jarak</label>
+                  <select id="bulk-max-distance" class="form-select" onchange="app.updateOutreachFilterCount()">
+                    <option value="0">Semua Jarak</option>
+                    <option value="1">≤ 1 km (Sangat Dekat)</option>
+                    <option value="3">≤ 3 km (Area Sekitar)</option>
+                    <option value="5">≤ 5 km (Radius 5 km)</option>
+                    <option value="10">≤ 10 km (Radius 10 km)</option>
+                    <option value="20">≤ 20 km (Radius 20 km)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
                   <label class="form-label">
                     Batasan Jumlah Bisnis: <b id="bulk-limit-val" style="color:var(--accent-primary);">5 bisnis</b>
                   </label>
@@ -615,6 +633,20 @@
                     <input type="range" id="bulk-limit" class="form-control" min="1" max="50" value="5" oninput="document.getElementById('bulk-limit-val').textContent = this.value + ' bisnis'">
                   </div>
                   <small style="color: var(--text-muted); font-size: 11px;" id="bulk-matching-info">Maksimal mengikuti jumlah data filter (0 bisnis ditemukan)</small>
+                </div>
+              </div>
+
+              <!-- Checklist Pilih Bisnis Spesifik -->
+              <div class="form-group" style="margin-top: 8px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin: 0;">Pilih Bisnis Spesifik untuk Di-generate AI (Opsional)</label>
+                  <div style="display: flex; gap: 8px; font-size: 12px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.selectAllOutreachBiz(true)">Pilih Semua</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.selectAllOutreachBiz(false)">Hapus Semua</button>
+                  </div>
+                </div>
+                <div style="max-height: 160px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--bg-card-border); border-radius: var(--radius-md); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;" id="bulk-biz-checklist">
+                  <small style="color: var(--text-muted);">Memuat daftar bisnis yang sesuai filter...</small>
                 </div>
               </div>
 
@@ -781,9 +813,9 @@
 
   <!-- Create Outreach Modal -->
   <div class="modal-overlay" id="modal-add-outreach">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width: 600px;">
       <div class="modal-header">
-        <h3>Buat Draft Email Outreach</h3>
+        <h3>Buat Draft Outreach (Manual & AI Single)</h3>
         <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-add-outreach')">✕</button>
       </div>
       <div class="modal-body">
@@ -793,20 +825,124 @@
             <select id="modal-outreach-biz-select" class="form-select" onchange="app.onOutreachBizChange(this.value)" required></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Email Tujuan</label>
-            <input type="email" id="modal-outreach-email" class="form-control" placeholder="owner@business.com" required>
+            <label class="form-label">Kontak Tujuan (No. HP / WhatsApp / Email)</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="text" id="modal-outreach-email" class="form-control" placeholder="0812xxx atau owner@business.com" style="flex:1;" required>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.fillModalContact('wa')" title="Gunakan No. WhatsApp bisnis">💬 WA</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.fillModalContact('email')" title="Gunakan Email bisnis">✉️ Email</button>
+            </div>
           </div>
+
+          <!-- AI Auto-Generate Single Message Button -->
+          <div style="background: var(--bg-tertiary); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--bg-card-border); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12.5px; color: var(--text-secondary);">Susun pesan otomatis untuk bisnis ini pakai Master of Truth AI:</span>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-generate-single-ai" onclick="app.generateSingleAIOutreach()">
+              ⚡ Generate dengan AI
+            </button>
+          </div>
+
           <div class="form-group">
-            <label class="form-label">Subjek Email</label>
+            <label class="form-label">Subjek Email / Judul</label>
             <input type="text" id="modal-outreach-subject" class="form-control" value="Permohonan Wawancara & Studi Kasus Riset Skripsi" required>
           </div>
           <div class="form-group">
-            <label class="form-label">Isi Surat / Pesan</label>
-            <textarea id="modal-outreach-body" class="form-control" rows="8" required></textarea>
+            <label class="form-label">Isi Pesan (Personalized Message)</label>
+            <textarea id="modal-outreach-body" class="form-control" rows="8" placeholder="Ketik manual atau klik tombol '⚡ Generate dengan AI' di atas..." required></textarea>
           </div>
           <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px;">
             <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-add-outreach')">Batal</button>
             <button type="submit" class="btn btn-primary">Simpan Draft</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Tambah Bisnis Manual / via Link Maps -->
+  <div class="modal-overlay" id="modal-add-manual-business">
+    <div class="modal-box" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3>➕ Tambah Bisnis Manual / via Link Maps</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-add-manual-business')">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Quick Parse Link Box -->
+        <div style="background: var(--bg-tertiary); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--bg-card-border); margin-bottom: 16px;">
+          <label class="form-label">🔗 Punya Link Google Maps / Website? (Autofill Otomatis)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="manual-parse-url" class="form-control" placeholder="Tempelkan link Google Maps (misal: https://maps.app.goo.gl/...) atau URL Website" style="flex:1;">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-parse-link" onclick="app.parseMapsLink()">
+              🔍 Parse Link
+            </button>
+          </div>
+          <small style="color: var(--text-muted); font-size: 11.5px; display: block; margin-top: 4px;">
+            Sistem akan membaca nama tempat, koordinat, dan alamat dari link Google Maps secara otomatis.
+          </small>
+        </div>
+
+        <form id="form-add-manual-business" onsubmit="event.preventDefault(); app.submitManualBusiness();">
+          <div class="form-row">
+            <div class="form-group" style="grid-column: span 2;">
+              <label class="form-label">Nama Bisnis / Tempat <span style="color:var(--accent-danger);">*</span></label>
+              <input type="text" id="manual-biz-name" class="form-control" placeholder="Contoh: Vivo Futsal Kapuk" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Kategori Usaha</label>
+              <select id="manual-biz-category" class="form-select">
+                <option value="Food & Dining">🍽️ Kuliner / Cafe</option>
+                <option value="Retail">🛒 Retail / Toko</option>
+                <option value="Technology">💻 Technology / Komputer</option>
+                <option value="Health & Beauty">🏥 Kesehatan / Klinik</option>
+                <option value="Automotive">🚗 Bengkel / Otomotif</option>
+                <option value="Services" selected>🛠️ Jasa / Services</option>
+                <option value="Hospitality">🏨 Perhotelan / Penginapan</option>
+                <option value="Entertainment">⚽ Hiburan / Olahraga</option>
+                <option value="Financial Services">💰 Keuangan / Jasa Finansial</option>
+                <option value="Other">📁 Lainnya</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Alamat Lengkap</label>
+            <input type="text" id="manual-biz-address" class="form-control" placeholder="Contoh: Jl. Kapuk Raya No. 12, Jakarta Utara">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">No. Telepon / WhatsApp</label>
+              <input type="text" id="manual-biz-phone" class="form-control" placeholder="Contoh: 08123456789">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Alamat Email</label>
+              <input type="email" id="manual-biz-email" class="form-control" placeholder="owner@business.com">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Website / Link Sosmed</label>
+            <input type="url" id="manual-biz-website" class="form-control" placeholder="https://vivofutsal.id atau link Instagram/Linktree">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Latitude (Opsional)</label>
+              <input type="number" step="any" id="manual-biz-lat" class="form-control" placeholder="-6.123456">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Longitude (Opsional)</label>
+              <input type="number" step="any" id="manual-biz-lon" class="form-control" placeholder="106.789123">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Catatan Tambahan (Opsional)</label>
+            <textarea id="manual-biz-notes" class="form-control" rows="2" placeholder="Catatan khusus mengenai bisnis ini..."></textarea>
+          </div>
+
+          <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('modal-add-manual-business')">Batal</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-manual-biz">Simpan Bisnis ke Database</button>
           </div>
         </form>
       </div>

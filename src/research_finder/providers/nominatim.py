@@ -259,6 +259,32 @@ class NominatimProvider(BusinessProvider):
 
         return businesses
 
+    async def inspect_point(self, lat: float, lon: float, radius_m: int = 80) -> list[Business]:
+        await self._rate_limit()
+        query = f"""
+        [out:json][timeout:15];
+        (
+          node["amenity"](around:{radius_m},{lat},{lon});
+          node["shop"](around:{radius_m},{lat},{lon});
+          node["office"](around:{radius_m},{lat},{lon});
+          node["craft"](around:{radius_m},{lat},{lon});
+        );
+        out center;
+        """
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    OVERPASS_URL,
+                    data={"data": query},
+                    headers={"User-Agent": "ResearchFinder/0.1"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return self._parse_elements(data.get("elements", []))
+        except Exception as e:
+            logger.error("Failed to inspect point (%.4f, %.4f): %s", lat, lon, e)
+            return []
+
     async def get_categories(self, location: LocationQuery) -> list[str]:
         radius_m = int(location.radius_km * 1000)
         query = f"""
