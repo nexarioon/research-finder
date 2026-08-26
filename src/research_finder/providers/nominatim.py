@@ -224,7 +224,7 @@ class NominatimProvider(BusinessProvider):
         (
           node["amenity"]{amenity_filter}(around:{radius_m},{location.latitude},{location.longitude});
         );
-        out body tags;
+        out center;
         """
 
         for attempt in range(3):
@@ -300,7 +300,7 @@ class NominatimProvider(BusinessProvider):
         query = f"""
         [out:json][timeout:15];
         node(id:{external_id});
-        out body tags;
+        out center;
         """
 
         try:

@@ -54,36 +54,46 @@ Aturan Penting:
 - Berikan 4-5 pertanyaan validasi untuk wawancara."""
 
 
-OUTREACH_PROMPT = """Anda adalah asisten mahasiswa di Indonesia yang bertugas menyusun pesan permohonan izin penelitian/wawancara skripsi ke pemilik usaha.
+OUTREACH_PROMPT = """Anda adalah asisten permohonan riset skripsi mahasiswa di Indonesia.
+Tugas Anda adalah menyusun pesan permohonan wawancara/riset awal yang SANTUN, RENDAH HATI, NATURAL, dan TIDAK MENGASUMSIKAN KENDALA, berpatokan pada MASTER OF TRUTH berikut.
 
-Data Bisnis Target:
+--- MASTER OF TRUTH TEMPLATE ---
+Pesan harus mengikuti struktur dan nada berikut:
+1. Salam & Perkenalan: "Selamat pagi/siang/sore Bapak/Ibu, perkenalkan saya {student_name}, mahasiswa {major}{university_phrase}."
+2. Latar Belakang Penemuan: "Saya menemukan {name} melalui Google Maps/OpenStreetMap dan melihat informasi mengenai layanan serta kontak pemesanan yang tersedia. Saat ini saya sedang melakukan riset awal untuk mencari dan memahami permasalahan nyata yang dihadapi oleh bisnis sebagai persiapan penelitian skripsi."
+3. Pertanyaan Eksploratif (TIDAK MENGASUMSIKAN): "Jika Bapak/Ibu tidak keberatan, saya ingin bertanya apakah dalam operasional {name} terdapat proses atau kegiatan yang saat ini masih menjadi kendala, cukup memakan waktu, sering dilakukan secara manual, atau menurut Bapak/Ibu masih dapat dibuat lebih efektif."
+4. Personalisasi Kendala Relevan (Lingkup ERP, CRM, SCM, SPK/DSS, BPMN/MPB, SIM Digitalisasi): Sebutkan 2-3 contoh proses spesifik yang sesuai dengan jenis usaha {category} (misal: pengelolaan jadwal & booking lapangan, pencatatan pembayaran, manajemen persediaan/stok, layanan pelanggan, koordinasi operasional). Lalu tambahkan: "Namun, saya tidak ingin mengasumsikan bahwa hal-hal tersebut merupakan kendala di {name}, sehingga saya ingin memahami kondisi yang sebenarnya terlebih dahulu."
+5. Keterjelasan Niat: "Saat ini saya belum menentukan solusi maupun topik penelitian secara spesifik. Saya hanya ingin memahami permasalahan nyata yang terjadi di lapangan sebagai bahan pertimbangan penelitian."
+6. Jaminan Kerahasiaan: "Tidak perlu memberikan data yang bersifat rahasia. Jika Bapak/Ibu berkenan sharing sedikit mengenai kendala yang pernah atau sedang dihadapi, saya akan sangat terbantu."
+7. Penutup Sopan: "Terima kasih atas waktu dan perhatiannya, Bapak/Ibu."
+
+--- INSTRUKSI DAN BATASAN KHUSUS TAMBAHAN DARI PENGGUNA (DO & DON'T) ---
+{prompt_context_text}
+
+--- DATA INPUT ---
 - Nama Bisnis: {name}
 - Kategori Usaha: {category}
 - Alamat/Lokasi: {address}
-- Masalah / Peluang Terkait: {context}
-
-Informasi Mahasiswa:
+- Konteks Tambahan: {context}
 - Nama Mahasiswa: {student_name}
-- Perguruan Tinggi: {university}
-- Saluran Komunikasi: {channel} (Pilihan: whatsapp / email)
+- Jurusan: {major}
+- Universitas: {university} (jika kosong, jangan sebutkan nama universitas)
+- Saluran Komunikasi: {channel} (whatsapp / email)
 
-Instruksi Khusus Format Pesan:
-1. Jika saluran adalah 'whatsapp':
-   - Buat pesan WhatsApp yang santun, ramah, profesional, langsung ke inti, dan mudah dibaca di smartphone.
-   - Sertakan salam pembuka sopan (Selamat pagi/siang Bapak/Ibu pengelola [Nama Bisnis]).
-   - Jelaskan singkat maksud permohonan izin riset skripsi tentang digitalisasi/sistem informasi di [Nama Bisnis] tanpa memungut biaya apapun.
-   - Ajukan permohonan izin diskusi/wawancara singkat (online/offline).
-   - Format subjek kosong (karena WhatsApp tidak butuh subjek).
+--- INSTRUKSI KHUSUS SALURAN ---
+1. Jika saluran = 'whatsapp':
+   - Pertahankan nada natural, ramah, dan santun.
+   - Buat format pesan ringkas dan mudah dibaca di smartphone.
+   - Kosongkan field "subject" (karena WhatsApp tidak butuh subjek).
 
-2. Jika saluran adalah 'email':
-   - Buat format surat formal permohonan riset skripsi.
-   - Buat 'subject' email yang jelas dan profesional (misal: Permohonan Izin Riset Skripsi Sistem Informasi - [Nama Bisnis]).
-   - Isi pesan lengkap dan terstruktur rapi.
+2. Jika saluran = 'email':
+   - Gunakan format email permohonan yang rapi dan profesional.
+   - Buat "subject" email yang jelas (misal: "Permohonan Diskusi Awal Riset Skripsi - {name}").
 
 Berikan output dalam format JSON PERSIS seperti berikut (Bahasa Indonesia):
 {{
-    "subject": "Subjek email (kosongkan atau beri ringkasan singkat jika whatsapp)",
-    "message": "Isi lengkap pesan WhatsApp atau Email yang sudah dipersonalisasi"
+    "subject": "Subjek email (kosongkan jika whatsapp)",
+    "message": "Isi lengkap pesan yang sudah dipersonalisasi berdasarkan Master of Truth dan Instruksi Khusus Pengguna"
 }}"""
 
 
@@ -223,13 +233,25 @@ Tautan Sosial Media: {len(website_data.get('social_links', []))} tautan ditemuka
         address: str,
         context: str = "",
         channel: str = "whatsapp",
-        student_name: str = "Mahasiswa Peneliti",
-        university: str = "Perguruan Tinggi",
+        student_name: str = "Vega Setiawan",
+        major: str = "S1 Sistem Informasi",
+        university: str | None = None,
+        prompt_context: str | None = None,
     ) -> dict[str, str]:
+        univ_str = (university or "").strip()
+        univ_text = f" dari {univ_str}" if univ_str else ""
+        prompt_context_text = f"Batasan & Catatan Pengguna: {prompt_context.strip()}" if prompt_context and prompt_context.strip() else "Tidak ada batasan khusus tambahan."
+
         if not await self.is_available():
             default_body = (
-                f"Halo Bapak/Ibu pengelola {business_name}, perkenalkan saya {student_name} dari {university}. "
-                f"Saya bermaksud mengajukan permohonan izin penelitian/wawancara skripsi terkait sistem informasi di {business_name}."
+                f"Selamat sore Bapak/Ibu, perkenalkan saya {student_name}, mahasiswa {major}{univ_text}.\n\n"
+                f"Saya menemukan {business_name} melalui Google Maps dan melihat informasi mengenai layanan serta kontak yang tersedia. "
+                f"Saat ini saya sedang melakukan riset awal untuk memahami permasalahan nyata yang dihadapi bisnis sebagai persiapan penelitian skripsi.\n\n"
+                f"Jika Bapak/Ibu tidak keberatan, saya ingin bertanya apakah dalam operasional {business_name} terdapat proses atau kegiatan yang saat ini masih menjadi kendala, memakan waktu, sering dilakukan secara manual, atau menurut Bapak/Ibu masih dapat dibuat lebih efektif.\n\n"
+                f"Namun, saya tidak ingin mengasumsikan bahwa hal-hal tersebut merupakan kendala di {business_name}, sehingga saya ingin memahami kondisi yang sebenarnya terlebih dahulu.\n\n"
+                f"Saat ini saya belum menentukan solusi maupun topik penelitian secara spesifik. Saya hanya ingin memahami permasalahan nyata yang terjadi di lapangan sebagai bahan pertimbangan penelitian.\n\n"
+                f"Tidak perlu memberikan data yang bersifat rahasia. Jika Bapak/Ibu berkenan sharing sedikit mengenai kendala yang pernah atau sedang dihadapi, saya akan sangat terbantu.\n\n"
+                f"Terima kasih atas waktu dan perhatiannya, Bapak/Ibu."
             )
             return {"subject": f"Permohonan Riset Skripsi - {business_name}", "message": default_body}
 
@@ -237,9 +259,12 @@ Tautan Sosial Media: {len(website_data.get('social_links', []))} tautan ditemuka
             name=business_name,
             category=category or "Umum",
             address=address or "-",
-            context=context or "Digitalisasi proses bisnis dan sistem informasi",
+            context=context or "Digitalisasi proses bisnis, sistem informasi, dan efisiensi operasional",
             student_name=student_name,
-            university=university,
+            major=major or "S1 Sistem Informasi",
+            university=univ_str,
+            university_phrase=univ_text,
+            prompt_context_text=prompt_context_text,
             channel=channel,
         )
 
@@ -287,9 +312,11 @@ Tautan Sosial Media: {len(website_data.get('social_links', []))} tautan ditemuka
             return {
                 "subject": f"Permohonan Riset Skripsi - {business_name}",
                 "message": (
-                    f"Kepada Yth. Pimpinan/Pengelola {business_name},\n\n"
-                    f"Perkenalkan saya {student_name} dari {university}. "
-                    f"Saya bermaksud mengajukan {business_name} sebagai studi kasus penelitian skripsi saya. "
-                    f"Besar harapan saya untuk dapat berdiskusi singkat terkait permohonan ini.\n\nTerima kasih."
+                    f"Selamat sore Bapak/Ibu, perkenalkan saya {student_name}, mahasiswa {major}{univ_text}.\n\n"
+                    f"Saya menemukan {business_name} melalui Google Maps dan melihat informasi mengenai layanan serta kontak yang tersedia. "
+                    f"Saat ini saya sedang melakukan riset awal untuk memahami permasalahan nyata yang dihadapi bisnis sebagai persiapan penelitian skripsi.\n\n"
+                    f"Jika Bapak/Ibu tidak keberatan, saya ingin bertanya apakah dalam operasional {business_name} terdapat proses atau kegiatan yang saat ini masih menjadi kendala, memakan waktu, sering dilakukan secara manual, atau menurut Bapak/Ibu masih dapat dibuat lebih efektif.\n\n"
+                    f"Namun, saya tidak mengasumsikan hal tersebut merupakan kendala di {business_name}, sehingga saya ingin memahami kondisi yang sebenarnya terlebih dahulu.\n\n"
+                    f"Terima kasih atas waktu dan perhatiannya, Bapak/Ibu."
                 ),
             }

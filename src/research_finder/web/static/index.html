@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/leaflet.css">
+  <script src="/static/js/leaflet.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -216,12 +218,28 @@
               <div class="form-row">
                 <div class="form-group" style="grid-column: span 2;">
                   <label class="form-label">Lokasi Pencarian (Nama Kota, Kecamatan, atau Alamat)</label>
-                  <input type="text" id="scan-location" class="form-control" placeholder="Contoh: Kaliurang, Yogyakarta atau Malang, Jawa Timur" required>
+                  <div style="display: flex; gap: 8px; align-items: stretch;">
+                    <input type="text" id="scan-location" class="form-control" placeholder="Contoh: Kaliurang, Yogyakarta atau Malang, Jawa Timur" style="flex: 1;">
+                    <button type="button" class="btn btn-secondary" id="btn-detect-location" onclick="app.detectLocation()" title="Deteksi lokasi otomatis dari perangkat Anda" style="white-space: nowrap; display: flex; align-items: center; gap: 6px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="9"/></svg>
+                      Lokasi Saya
+                    </button>
+                  </div>
+                  <input type="hidden" id="scan-latitude" value="">
+                  <input type="hidden" id="scan-longitude" value="">
+                  <small id="scan-location-info" style="display:none; color: var(--accent-primary); margin-top: 4px; font-size: 11.5px;"></small>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Radius Pencarian (km)</label>
-                  <input type="number" id="scan-radius" class="form-control" min="1" max="25" value="5" step="0.5">
+                  <label class="form-label">Radius Pencarian (km, maks 50)</label>
+                  <input type="number" id="scan-radius" class="form-control" min="1" max="50" value="5" step="0.5">
                 </div>
+              </div>
+
+              <!-- Interactive Map Picker -->
+              <div class="form-group">
+                <label class="form-label">Pilih Lokasi di Peta (Klik untuk menentukan titik pencarian)</label>
+                <div id="scan-map" style="height: 320px; border-radius: var(--radius-md); border: 1px solid var(--bg-card-border); z-index: 1;"></div>
+                <small style="color: var(--text-muted); margin-top: 4px; font-size: 11.5px;">Klik pada peta untuk memilih lokasi. Gunakan scroll untuk zoom. Pin akan otomatis mengisi koordinat.</small>
               </div>
 
               <div class="form-group">
@@ -233,6 +251,17 @@
                   <label class="pill-check"><input type="checkbox" name="cat" value="Health & Beauty"><span>🏥 Kesehatan & Klinik</span></label>
                   <label class="pill-check"><input type="checkbox" name="cat" value="Automotive"><span>🚗 Bengkel / Otomotif</span></label>
                   <label class="pill-check"><input type="checkbox" name="cat" value="Services"><span>🛠️ Jasa / Services</span></label>
+                </div>
+              </div>
+
+              <!-- Filter Informasi Kontak & Value Added -->
+              <div class="form-group">
+                <label class="form-label">Filter Informasi & Kontak (Prioritas Riset)</label>
+                <div class="category-pills">
+                  <label class="pill-check"><input type="checkbox" id="scan-filter-contact" value="phone"><span>💬 Punya Telepon / WA</span></label>
+                  <label class="pill-check"><input type="checkbox" id="scan-filter-web" value="web"><span>🌐 Punya Website / Sosmed / E-Commerce</span></label>
+                  <label class="pill-check"><input type="checkbox" id="scan-filter-email" value="email"><span>✉️ Punya Email</span></label>
+                  <label class="pill-check"><input type="checkbox" id="scan-filter-has-any" value="has_any"><span>🎯 Hanya Bisnis Berinformasi Lengkap (Abaikan Kosong)</span></label>
                 </div>
               </div>
 
@@ -265,15 +294,40 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th>#</th>
                     <th>Nama Bisnis</th>
                     <th>Kategori</th>
                     <th>Alamat</th>
+                    <th>Jarak</th>
                     <th>Website / Kontak</th>
-                    <th>Rating</th>
                   </tr>
                 </thead>
                 <tbody id="scan-results-body"></tbody>
               </table>
+            </div>
+
+            <!-- Scan Results Pagination Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--bg-card-border); flex-wrap: wrap; gap: 12px;" id="scan-pagination-bar">
+              <span style="font-size: 13px; color: var(--text-secondary);" id="scan-page-range-info">Menampilkan 0 dari 0 bisnis</span>
+              
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary);">
+                  <span>Tampilkan:</span>
+                  <select id="scan-page-size" class="form-select" style="width: auto; padding: 4px 10px; font-size: 12.5px;" onchange="app.changeScannedPageSize(this.value)">
+                    <option value="25" selected>25 / halaman</option>
+                    <option value="50">50 / halaman</option>
+                    <option value="100">100 / halaman</option>
+                    <option value="250">250 / halaman</option>
+                    <option value="0">Tampilkan Semua</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 6px; align-items: center;" id="scan-pagination-nav">
+                  <button class="btn btn-secondary btn-sm" id="btn-scan-page-prev" onclick="app.scannedPrevPage()">◀ Sebelumnya</button>
+                  <span style="font-size: 13px; font-weight: 600; padding: 0 4px;" id="scan-page-indicator">Hal 1 / 1</span>
+                  <button class="btn btn-secondary btn-sm" id="btn-scan-page-next" onclick="app.scannedNextPage()">Selanjutnya ▶</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -353,7 +407,7 @@
                     <th class="sortable" onclick="app.sortSaved('name')">Nama Bisnis <span id="sort-icon-name" class="sort-indicator">↕</span></th>
                     <th class="sortable" onclick="app.sortSaved('category')">Kategori <span id="sort-icon-category" class="sort-indicator">↕</span></th>
                     <th class="sortable" onclick="app.sortSaved('address')">Alamat <span id="sort-icon-address" class="sort-indicator">↕</span></th>
-                    <th class="sortable" onclick="app.sortSaved('rating')">Rating <span id="sort-icon-rating" class="sort-indicator">↕</span></th>
+                    <th class="sortable" onclick="app.sortSaved('distance')">Jarak <span id="sort-icon-distance" class="sort-indicator">↕</span></th>
                     <th class="sortable" onclick="app.sortSaved('total_score')">Skor Riset <span id="sort-icon-total_score" class="sort-indicator">↕</span></th>
                     <th>Aksi</th>
                   </tr>
@@ -512,6 +566,28 @@
             </p>
 
             <form id="form-bulk-outreach" onsubmit="event.preventDefault(); app.runBulkAIGenerate();">
+              <!-- Filter Target Multi-Selection -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Filter Tipe Kontak Target (Multi-Selection)</label>
+                <div class="category-pills">
+                  <label class="pill-check"><input type="checkbox" name="bulk_contact" value="phone" onchange="app.updateOutreachFilterCount()"><span>💬 Punya Telepon / WA</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_contact" value="email" onchange="app.updateOutreachFilterCount()"><span>✉️ Punya Email</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_contact" value="website" onchange="app.updateOutreachFilterCount()"><span>🌐 Punya Website / Sosmed</span></label>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Filter Kategori Bisnis Target (Multi-Selection)</label>
+                <div class="category-pills" id="bulk-category-pills">
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Technology" onchange="app.updateOutreachFilterCount()"><span>💻 Technology</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Retail" onchange="app.updateOutreachFilterCount()"><span>🛒 Retail</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Food & Dining" onchange="app.updateOutreachFilterCount()"><span>🍽️ Kuliner</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Health & Beauty" onchange="app.updateOutreachFilterCount()"><span>🏥 Kesehatan</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Automotive" onchange="app.updateOutreachFilterCount()"><span>🚗 Bengkel</span></label>
+                  <label class="pill-check"><input type="checkbox" name="bulk_cat" value="Services" onchange="app.updateOutreachFilterCount()"><span>🛠️ Services</span></label>
+                </div>
+              </div>
+
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">Saluran Komunikasi (Channel)</label>
@@ -522,32 +598,48 @@
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">
-                    Batasan Jumlah Bisnis (Custom Limit): <b id="bulk-limit-val" style="color:var(--accent-primary);">5 bisnis</b>
-                  </label>
-                  <div style="display:flex; align-items:center; gap:12px;">
-                    <input type="range" id="bulk-limit" class="form-control" min="1" max="25" value="5" oninput="document.getElementById('bulk-limit-val').textContent = this.value + ' bisnis'">
-                  </div>
+                  <label class="form-label">Min Skor Riset</label>
+                  <select id="bulk-min-score" class="form-select" onchange="app.updateOutreachFilterCount()">
+                    <option value="0">Semua Bisnis</option>
+                    <option value="50">Skor ≥ 50</option>
+                    <option value="70">Skor ≥ 70 (Tinggi)</option>
+                    <option value="80">Skor ≥ 80 (Sangat Layak)</option>
+                  </select>
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">Filter Target</label>
-                  <select id="bulk-filter-contact" class="form-select">
-                    <option value="all">Semua Bisnis Tersimpan</option>
-                    <option value="with_contact">Hanya Bisnis yang Punya Nomor HP/Email</option>
-                  </select>
+                  <label class="form-label">
+                    Batasan Jumlah Bisnis: <b id="bulk-limit-val" style="color:var(--accent-primary);">5 bisnis</b>
+                  </label>
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="range" id="bulk-limit" class="form-control" min="1" max="50" value="5" oninput="document.getElementById('bulk-limit-val').textContent = this.value + ' bisnis'">
+                  </div>
+                  <small style="color: var(--text-muted); font-size: 11px;" id="bulk-matching-info">Maksimal mengikuti jumlah data filter (0 bisnis ditemukan)</small>
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">Nama Anda (Mahasiswa)</label>
-                  <input type="text" id="bulk-student-name" class="form-control" placeholder="Contoh: Budi Santoso" value="Mahasiswa Peneliti">
+                  <input type="text" id="bulk-student-name" class="form-control" placeholder="Contoh: Vega Setiawan" value="Vega Setiawan">
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Nama Kampus / Universitas</label>
-                  <input type="text" id="bulk-university" class="form-control" placeholder="Contoh: Universitas Gadjah Mada" value="Perguruan Tinggi">
+                  <label class="form-label">Program Studi / Jurusan</label>
+                  <input type="text" id="bulk-major" class="form-control" placeholder="Contoh: S1 Sistem Informasi" value="S1 Sistem Informasi">
                 </div>
+                <div class="form-group">
+                  <label class="form-label">Nama Kampus / Universitas (Opsional)</label>
+                  <input type="text" id="bulk-university" class="form-control" placeholder="Contoh: Universitas Indonesia (Boleh dikosongkan)" value="">
+                </div>
+              </div>
+
+              <!-- Prompt Context & Do/Don't Directive Box -->
+              <div class="form-group" style="margin-top: 12px;">
+                <label class="form-label">🧠 Prompt Context & Batasan AI (Instruksi Tambahan / Ruang Lingkup / Do & Don't)</label>
+                <textarea id="bulk-prompt-context" class="form-control" rows="3" placeholder="Contoh: Fokus pada kendala pencatatan stok dan booking lapangan. Boleh tawarkan opsi diskusi 15 menit via Zoom/WA. JANGAN tawarkan jasa berbayar dan JANGAN minta data keuangan rahasia."></textarea>
+                <small style="color: var(--text-muted); font-size: 11.5px; display: block; margin-top: 4px;">
+                  Berikan instruksi khusus untuk AI: lingkup riset yang diinginkan, apa yang BOLEH di-generate, dan apa yang DILARANG di-generate. AI akan mematuhi batasan ini untuk seluruh bisnis secara dinamis.
+                </small>
               </div>
 
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">

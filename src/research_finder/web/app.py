@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from research_finder.config.settings import get_settings
 from research_finder.database.connection import get_session, init_db
 from research_finder.database.models import (
     AIAnalysis as AIAnalysisModel,
+    AppSettings as AppSettingsModel,
     Business as BusinessModel,
     BusinessStatus,
     Outreach as OutreachModel,
@@ -36,6 +38,7 @@ from research_finder.domain.models import (
     LocationQuery,
     ScoreBreakdown,
 )
+from research_finder.providers.location import geocode_address, get_current_location, reverse_geocode
 from research_finder.providers.nominatim import NominatimProvider
 from research_finder.providers.openai_provider import OpenAIProvider
 
@@ -44,9 +47,73 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance in meters between two GPS coordinates using Haversine formula."""
+    R = 6371000  # Earth radius in meters
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def format_distance(meters: float) -> str:
+    """Format distance in meters to human-readable string."""
+    if meters < 1000:
+        return f"{meters:.0f} m"
+    return f"{meters / 1000:.1f} km"
+
+
+async def save_last_scan_location(session, lat: float, lon: float, address: str | None = None) -> None:
+    """Save last scan coordinates and address in SQLite app_settings table."""
+    try:
+        settings_dict = {
+            "scan_lat": str(lat),
+            "scan_lon": str(lon),
+            "scan_address": address or "",
+        }
+        for key, val in settings_dict.items():
+            setting_obj = await session.scalar(
+                select(AppSettingsModel).where(AppSettingsModel.key == key)
+            )
+            if setting_obj:
+                setting_obj.value = val
+            else:
+                session.add(AppSettingsModel(key=key, value=val))
+        await session.commit()
+    except Exception as e:
+        logger.warning("Could not save last scan location to SQLite: %s", e)
+
+
+async def get_last_scan_location(session) -> dict[str, Any]:
+    """Retrieve last scan coordinates and address from SQLite app_settings table."""
+    try:
+        lat_setting = await session.scalar(
+            select(AppSettingsModel.value).where(AppSettingsModel.key == "scan_lat")
+        )
+        lon_setting = await session.scalar(
+            select(AppSettingsModel.value).where(AppSettingsModel.key == "scan_lon")
+        )
+        addr_setting = await session.scalar(
+            select(AppSettingsModel.value).where(AppSettingsModel.key == "scan_address")
+        )
+        if lat_setting and lon_setting:
+            return {
+                "latitude": float(lat_setting),
+                "longitude": float(lon_setting),
+                "address": addr_setting or "",
+            }
+    except Exception as e:
+        logger.warning("Could not get last scan location from SQLite: %s", e)
+    return {"latitude": None, "longitude": None, "address": ""}
+
+
 # --- Pydantic Schemas ---
 class ScanRequest(BaseModel):
-    location: str
+    location: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     radius_km: float = 5.0
     min_rating: float = 0.0
     min_reviews: int = 0
@@ -82,10 +149,20 @@ class BulkOutreachRequest(BaseModel):
     limit: int = 5
     channel: str = "whatsapp"  # "whatsapp" | "email"
     category: str | None = None
+    categories: list[str] | None = None
+    contact_types: list[str] | None = None
     min_score: float | None = None
     only_with_contacts: bool = False
-    student_name: str = "Mahasiswa Peneliti"
-    university: str = "Perguruan Tinggi"
+    student_name: str = "Vega Setiawan"
+    major: str = "S1 Sistem Informasi"
+    university: str | None = None
+    prompt_context: str | None = None
+
+class MatchingCountRequest(BaseModel):
+    category: str | None = None
+    categories: list[str] | None = None
+    contact_types: list[str] | None = None
+    min_score: float | None = None
 
 
 def create_app() -> FastAPI:
@@ -180,6 +257,8 @@ def create_app() -> FastAPI:
         has_email: bool | None = None,
         has_social: bool | None = None,
         has_ai: bool | None = None,
+        sort_col: str | None = None,
+        sort_dir: str | None = "asc",
         page: int = 1,
         limit: int = 50,
         paged: bool = False,
@@ -224,23 +303,63 @@ def create_app() -> FastAPI:
                     BusinessModel.id.in_(select(AIAnalysisModel.business_id))
                 )
 
-            total_count = await session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            last_loc = await get_last_scan_location(session)
+            last_lat = last_loc.get("latitude")
+            last_lon = last_loc.get("longitude")
 
-            query = query.order_by(
-                BusinessModel.total_score.desc().nullslast(),
-                BusinessModel.id.desc(),
-            )
+            if sort_col == "distance":
+                result = await session.execute(query)
+                all_rows = list(result.scalars().all())
 
-            if limit > 0:
-                offset = max(0, (page - 1) * limit)
-                query = query.offset(offset).limit(limit)
+                def calc_dist(b):
+                    if last_lat is not None and last_lon is not None and b.latitude is not None and b.longitude is not None:
+                        return haversine_distance(last_lat, last_lon, b.latitude, b.longitude)
+                    return float("inf")
 
-            result = await session.execute(query)
-            rows = result.scalars().all()
+                all_rows.sort(key=calc_dist, reverse=(sort_dir == "desc"))
+                total_count = len(all_rows)
+
+                if limit > 0:
+                    offset = max(0, (page - 1) * limit)
+                    rows = all_rows[offset : offset + limit]
+                else:
+                    rows = all_rows
+            else:
+                total_count = await session.scalar(select(func.count()).select_from(query.subquery())) or 0
+
+                if sort_col == "name":
+                    order_expr = BusinessModel.name.asc() if sort_dir == "asc" else BusinessModel.name.desc()
+                elif sort_col == "category":
+                    order_expr = BusinessModel.category.asc() if sort_dir == "asc" else BusinessModel.category.desc()
+                elif sort_col == "address":
+                    order_expr = BusinessModel.address.asc() if sort_dir == "asc" else BusinessModel.address.desc()
+                elif sort_col == "id":
+                    order_expr = BusinessModel.id.asc() if sort_dir == "asc" else BusinessModel.id.desc()
+                else:
+                    order_expr = BusinessModel.total_score.asc().nullslast() if sort_dir == "asc" else BusinessModel.total_score.desc().nullslast()
+
+                query = query.order_by(order_expr, BusinessModel.id.desc())
+
+                if limit > 0:
+                    offset = max(0, (page - 1) * limit)
+                    query = query.offset(offset).limit(limit)
+
+                result = await session.execute(query)
+                rows = result.scalars().all()
+
+            last_loc = await get_last_scan_location(session)
+            last_lat = last_loc.get("latitude")
+            last_lon = last_loc.get("longitude")
 
             businesses = []
             for b in rows:
                 breakdown = json.loads(b.score_breakdown) if b.score_breakdown else None
+                dist_m = (
+                    haversine_distance(last_lat, last_lon, b.latitude, b.longitude)
+                    if last_lat is not None and last_lon is not None and b.latitude is not None and b.longitude is not None
+                    else None
+                )
+                dist_text = format_distance(dist_m) if dist_m is not None else None
                 businesses.append(
                     {
                         "id": b.id,
@@ -262,6 +381,8 @@ def create_app() -> FastAPI:
                         "notes": b.notes,
                         "total_score": b.total_score,
                         "score_breakdown": breakdown,
+                        "distance_m": dist_m,
+                        "distance_text": dist_text,
                         "created_at": b.created_at.isoformat() if b.created_at else None,
                     }
                 )
@@ -427,18 +548,88 @@ def create_app() -> FastAPI:
 
     # --- Discovery & Scanning ---
 
+    @app.get("/api/discovery/last-location")
+    async def get_last_location_endpoint() -> dict[str, Any]:
+        """Get last saved scan location from SQLite database."""
+        async with get_session() as session:
+            return await get_last_scan_location(session)
+
+    @app.get("/api/discovery/auto-location")
+    async def detect_location() -> dict[str, Any]:
+        """Detect user location via IP geolocation (server-side fallback)."""
+        loc = await get_current_location()
+        if loc is None:
+            raise HTTPException(status_code=503, detail="Tidak dapat mendeteksi lokasi otomatis dari IP.")
+
+        address = loc.address or ""
+        try:
+            rev = await reverse_geocode(loc.latitude, loc.longitude)
+            if rev:
+                address = rev
+        except Exception:
+            pass
+
+        return {
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "address": address,
+        }
+
+    @app.get("/api/discovery/reverse-geocode")
+    async def reverse_geocode_endpoint(lat: float, lon: float) -> dict[str, Any]:
+        """Convert coordinates to a human-readable address."""
+        address = await reverse_geocode(lat, lon)
+        if not address:
+            raise HTTPException(status_code=404, detail="Tidak dapat menemukan alamat untuk koordinat tersebut.")
+        return {"address": address, "latitude": lat, "longitude": lon}
+
     @app.post("/api/discovery/scan")
     async def scan_businesses(req: ScanRequest) -> dict[str, Any]:
         provider = NominatimProvider()
-        lat, lon = await provider.geocode(req.location)
-        if lat is None or lon is None:
-            raise HTTPException(status_code=400, detail=f"Location not found: '{req.location}'")
+
+        lat: float | None = None
+        lon: float | None = None
+        display_location = req.location or ""
+
+        # If coordinates are directly provided (from browser geolocation)
+        if req.latitude is not None and req.longitude is not None:
+            lat = req.latitude
+            lon = req.longitude
+            # Try to get a readable address if not provided
+            if not display_location:
+                try:
+                    rev_addr = await reverse_geocode(lat, lon)
+                    if rev_addr:
+                        display_location = rev_addr
+                    else:
+                        display_location = f"{lat:.4f}, {lon:.4f}"
+                except Exception:
+                    display_location = f"{lat:.4f}, {lon:.4f}"
+        elif req.location:
+            # Geocode the text address to coordinates
+            geo_result = await geocode_address(req.location)
+            if geo_result is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Lokasi tidak ditemukan: '{req.location}'. Coba gunakan nama kota yang lebih umum.",
+                )
+            lat = geo_result.latitude
+            lon = geo_result.longitude
+            display_location = geo_result.address or req.location
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Berikan lokasi pencarian (teks) atau koordinat (latitude/longitude).",
+            )
+
+        async with get_session() as session:
+            await save_last_scan_location(session, lat, lon, display_location)
 
         location = LocationQuery(
             latitude=lat,
             longitude=lon,
             radius_km=req.radius_km,
-            address=req.location,
+            address=display_location,
         )
         filters = DiscoveryFilters(
             min_rating=req.min_rating,
@@ -454,7 +645,7 @@ def create_app() -> FastAPI:
         )
 
         return {
-            "location": req.location,
+            "location": display_location,
             "latitude": lat,
             "longitude": lon,
             "count": len(discovered),
@@ -475,6 +666,16 @@ def create_app() -> FastAPI:
                     "has_online_presence": b.has_online_presence,
                     "source": b.source,
                     "external_id": b.external_id,
+                    "distance_m": (
+                        haversine_distance(lat, lon, b.latitude, b.longitude)
+                        if b.latitude is not None and b.longitude is not None
+                        else None
+                    ),
+                    "distance_text": (
+                        format_distance(haversine_distance(lat, lon, b.latitude, b.longitude))
+                        if b.latitude is not None and b.longitude is not None
+                        else None
+                    ),
                 }
                 for b in discovered
             ],
@@ -814,6 +1015,31 @@ def create_app() -> FastAPI:
                 "email": b.email,
             }
 
+    @app.post("/api/outreach/matching-count")
+    async def get_outreach_matching_count(req: MatchingCountRequest) -> dict[str, Any]:
+        async with get_session() as session:
+            query = select(func.count(BusinessModel.id))
+            if req.categories:
+                query = query.where(BusinessModel.category.in_(req.categories))
+            elif req.category and req.category != "all":
+                query = query.where(BusinessModel.category == req.category)
+
+            if req.min_score is not None and req.min_score > 0:
+                query = query.where(BusinessModel.total_score >= req.min_score)
+
+            if req.contact_types:
+                for ct in req.contact_types:
+                    if ct == "phone":
+                        query = query.where(BusinessModel.phone.isnot(None), BusinessModel.phone != "")
+                    elif ct == "email":
+                        query = query.where(BusinessModel.email.isnot(None), BusinessModel.email != "")
+                    elif ct == "website":
+                        query = query.where(BusinessModel.website.isnot(None), BusinessModel.website != "")
+
+            matching_count = await session.scalar(query) or 0
+            total_all = await session.scalar(select(func.count(BusinessModel.id))) or 0
+            return {"matching_count": matching_count, "total_all": total_all}
+
     @app.post("/api/outreach/generate-bulk")
     async def generate_bulk_outreach(req: BulkOutreachRequest) -> dict[str, Any]:
         ai_provider = OpenAIProvider()
@@ -825,11 +1051,23 @@ def create_app() -> FastAPI:
 
         async with get_session() as session:
             query = select(BusinessModel)
-            if req.category and req.category != "all":
+            if req.categories:
+                query = query.where(BusinessModel.category.in_(req.categories))
+            elif req.category and req.category != "all":
                 query = query.where(BusinessModel.category == req.category)
+
             if req.min_score is not None and req.min_score > 0:
                 query = query.where(BusinessModel.total_score >= req.min_score)
-            if req.only_with_contacts:
+
+            if req.contact_types:
+                for ct in req.contact_types:
+                    if ct == "phone":
+                        query = query.where(BusinessModel.phone.isnot(None), BusinessModel.phone != "")
+                    elif ct == "email":
+                        query = query.where(BusinessModel.email.isnot(None), BusinessModel.email != "")
+                    elif ct == "website":
+                        query = query.where(BusinessModel.website.isnot(None), BusinessModel.website != "")
+            elif req.only_with_contacts:
                 if req.channel == "whatsapp":
                     query = query.where(BusinessModel.phone.isnot(None), BusinessModel.phone != "")
                 else:
@@ -848,7 +1086,6 @@ def create_app() -> FastAPI:
 
             generated_items = []
             for b in businesses:
-                # Retrieve AI analysis if already performed
                 ai_data = await session.scalar(
                     select(AIAnalysisModel).where(AIAnalysisModel.business_id == b.id)
                 )
@@ -863,7 +1100,9 @@ def create_app() -> FastAPI:
                     context=context,
                     channel=req.channel,
                     student_name=req.student_name,
+                    major=req.major,
                     university=req.university,
+                    prompt_context=req.prompt_context,
                 )
 
                 contact_to = (b.phone if req.channel == "whatsapp" else b.email) or "-"
