@@ -292,45 +292,139 @@ class App {
       }
     }, 100);
   }
-
   updateMapPin(lat, lon) {
     this.scanOriginLat = lat;
     this.scanOriginLon = lon;
     localStorage.setItem('rf_scan_lat', lat.toString());
     localStorage.setItem('rf_scan_lon', lon.toString());
+
     if (!this.scanMap) {
       this.ensureScanMap();
     }
     if (!this.scanMap) return;
+
     if (this.scanMarker) {
       this.scanMarker.setLatLng([lat, lon]);
     } else {
       this.scanMarker = L.marker([lat, lon], { draggable: true }).addTo(this.scanMap);
-      // Allow dragging the marker to fine-tune location
       this.scanMarker.on('dragend', async (e) => {
         const pos = e.target.getLatLng();
         document.getElementById('scan-latitude').value = pos.lat;
         document.getElementById('scan-longitude').value = pos.lng;
-        const infoEl = document.getElementById('scan-location-info');
-        const locationInput = document.getElementById('scan-location');
-        try {
-          const revRes = await fetch(`/api/discovery/reverse-geocode?lat=${pos.lat}&lon=${pos.lng}`);
-          if (revRes.ok) {
-            const revData = await revRes.json();
-            locationInput.value = revData.address;
-          } else {
-            locationInput.value = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
-          }
-        } catch {
-          locationInput.value = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
-        }
-        if (infoEl) {
-          infoEl.textContent = `Koordinat dipindahkan: ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} (via drag pin)`;
-          infoEl.style.display = 'block';
-        }
+        this.inspectPointAndShowPopup(pos.lat, pos.lng);
       });
     }
-    this.scanMap.setView([lat, lon], Math.max(this.scanMap.getZoom(), 14));
+    this.scanMap.setView([lat, lon], Math.max(this.scanMap.getZoom(), 15));
+    this.inspectPointAndShowPopup(lat, lon);
+  }
+
+  async inspectPointAndShowPopup(lat, lng) {
+    if (!this.scanMarker) return;
+
+    this.scanMarker.bindPopup(`<div style="padding:4px; font-family:inherit;"><span class="spinner"></span> Memeriksa tempat di titik ini...</div>`).openPopup();
+
+    try {
+      const res = await fetch('/api/discovery/inspect-point', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: lat, longitude: lng })
+      });
+
+      if (!res.ok) throw new Error('Gagal inspect point');
+
+      const data = await res.json();
+      const locationInput = document.getElementById('scan-location');
+      const infoEl = document.getElementById('scan-location-info');
+
+      if (data.address && locationInput) {
+        locationInput.value = data.address;
+      }
+      if (infoEl) {
+        infoEl.textContent = `Koordinat dipilih: ${lat.toFixed(6)}, ${lng.toFixed(6)} (${data.found_count} bisnis terdeteksi)`;
+        infoEl.style.display = 'block';
+      }
+
+      this.inspectedBusinessesAtPoint = data.businesses || [];
+
+      let popupHtml = '';
+      if (data.found_count > 0) {
+        const b = data.businesses[0];
+        const gmapsQuery = encodeURIComponent(`${b.name} ${b.address || ''}`.trim());
+        const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${gmapsQuery}`;
+        const waLink = b.phone ? this.formatWaUrl(b.phone, `Halo Bapak/Ibu pengelola ${b.name}, perkenalkan saya mahasiswa yang sedang melakukan riset skripsi.`) : null;
+
+        popupHtml = `
+          <div style="min-width:250px; font-family:inherit; padding:4px;">
+            <div style="font-size:10.5px; color:var(--accent-primary); font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">🏢 Detail Bisnis Terdeteksi:</div>
+            <b style="font-size:15px; color:#0f172a; line-height:1.2;">${this.escapeHtml(b.name)}</b>
+            
+            <div style="margin:6px 0 8px 0; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+              <span class="badge badge-purple" style="font-size:10.5px;">${this.escapeHtml(b.category || 'Umum')}</span>
+              ${b.distance_text ? `<span class="badge" style="font-size:10.5px; background:rgba(99, 102, 241, 0.15); color:#4f46e5; border:1px solid rgba(99, 102, 241, 0.3);">📍 ${b.distance_text}</span>` : ''}
+            </div>
+
+            <div style="font-size:11.5px; color:#475569; margin-bottom:8px; line-height:1.4;">
+              <b>📍 Alamat:</b> ${this.escapeHtml(b.address || '-')}<br>
+              ${b.phone ? `<b>📞 Telepon/WA:</b> ${this.escapeHtml(b.phone)}<br>` : ''}
+              ${b.email ? `<b>✉️ Email:</b> ${this.escapeHtml(b.email)}<br>` : ''}
+              ${b.website ? `<b>🌐 Web:</b> <a href="${b.website}" target="_blank" style="color:#2563eb; text-decoration:underline;">${this.escapeHtml(b.website)}</a>` : ''}
+            </div>
+
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; border-top:1px solid #e2e8f0; padding-top:8px;">
+              <button type="button" class="btn btn-success btn-sm" onclick="app.saveInspectedBizIndex(0)">
+                💾 Simpan ke Database
+              </button>
+              <a href="${gmapsUrl}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                🗺️ Maps
+              </a>
+              ${waLink ? `<a href="${waLink}" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none; color:#16a34a;">💬 WA</a>` : ''}
+            </div>
+          </div>
+        `;
+      } else {
+        popupHtml = `
+          <div style="min-width:210px; font-family:inherit; padding:2px;">
+            <b style="font-size:13px; color:#1e293b;">📍 Titik Koordinat Peta</b>
+            <div style="font-size:11.5px; color:#475569; margin:4px 0 8px 0;">${this.escapeHtml(data.address)}</div>
+            <button type="button" class="btn btn-primary btn-sm" onclick="app.openModalWithPoint('${this.escapeQuotes(data.address)}', ${lat}, ${lng})">
+              ➕ Tambah Tempat ke Database
+            </button>
+          </div>
+        `;
+      }
+
+      this.scanMarker.bindPopup(popupHtml).openPopup();
+
+    } catch (err) {
+      console.warn('Inspect point failed:', err);
+    }
+  }
+
+  async saveInspectedBizIndex(idx) {
+    if (!this.inspectedBusinessesAtPoint || !this.inspectedBusinessesAtPoint[idx]) return;
+    const biz = this.inspectedBusinessesAtPoint[idx];
+
+    try {
+      const res = await fetch('/api/discovery/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businesses: [biz] })
+      });
+      if (!res.ok) throw new Error('Gagal menyimpan bisnis');
+      const data = await res.json();
+      this.showToast(`Berhasil menyimpan "${biz.name}" ke database! 🎉`, 'success');
+      if (this.scanMarker) this.scanMarker.closePopup();
+      this.loadSavedBusinesses(1);
+    } catch (err) {
+      this.showToast(err.message, 'error');
+    }
+  }
+
+  openModalWithPoint(address, lat, lon) {
+    this.openModalAddManualBusiness();
+    if (address) document.getElementById('manual-biz-address').value = address;
+    if (lat) document.getElementById('manual-biz-lat').value = lat;
+    if (lon) document.getElementById('manual-biz-lon').value = lon;
   }
 
   haversineDistance(lat1, lon1, lat2, lon2) {
@@ -1213,6 +1307,7 @@ class App {
     const categories = Array.from(catCheckboxes).map(c => c.value);
 
     const minScore = parseFloat(document.getElementById('bulk-min-score')?.value) || 0;
+    const maxDist = parseFloat(document.getElementById('bulk-max-distance')?.value) || 0;
 
     try {
       const res = await fetch('/api/outreach/matching-count', {
@@ -1221,7 +1316,8 @@ class App {
         body: JSON.stringify({
           categories: categories.length > 0 ? categories : null,
           contact_types: contactTypes.length > 0 ? contactTypes : null,
-          min_score: minScore
+          min_score: minScore,
+          max_distance_km: maxDist > 0 ? maxDist : null
         })
       });
 
@@ -1248,10 +1344,32 @@ class App {
         if (infoEl) {
           infoEl.textContent = `Menemukan ${matching} bisnis yang sesuai filter (dari total ${total} bisnis tersimpan). Limit slider maks: ${matching}`;
         }
+
+        // Render business selection checklist
+        const checklistEl = document.getElementById('bulk-biz-checklist');
+        if (checklistEl) {
+          if (!data.businesses || data.businesses.length === 0) {
+            checklistEl.innerHTML = `<small style="color: var(--text-muted);">Tidak ada bisnis yang cocok dengan filter tersebut.</small>`;
+          } else {
+            checklistEl.innerHTML = data.businesses.map(b => `
+              <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; cursor:pointer;">
+                <input type="checkbox" name="bulk_biz_select" value="${b.id}" checked>
+                <span><b>${this.escapeHtml(b.name)}</b> (${this.escapeHtml(b.category)})</span>
+                ${b.distance_text ? `<span class="badge" style="font-size:10px; padding:1px 5px; background:rgba(99, 102, 241, 0.12); color:var(--accent-primary);">📍 ${b.distance_text}</span>` : ''}
+                ${b.phone ? `<small style="color:var(--text-muted); font-size:11px;">💬 ${b.phone}</small>` : ''}
+              </label>
+            `).join('');
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to update outreach matching count:', err);
     }
+  }
+
+  selectAllOutreachBiz(checked) {
+    const checkboxes = document.querySelectorAll('input[name="bulk_biz_select"]');
+    checkboxes.forEach(cb => { cb.checked = checked; });
   }
 
   async runBulkAIGenerate() {
@@ -1265,6 +1383,10 @@ class App {
     const categories = Array.from(catCheckboxes).map(c => c.value);
 
     const minScore = parseFloat(document.getElementById('bulk-min-score')?.value) || 0;
+    const maxDist = parseFloat(document.getElementById('bulk-max-distance')?.value) || 0;
+
+    const selectedBizBoxes = document.querySelectorAll('input[name="bulk_biz_select"]:checked');
+    const selectedBizIds = Array.from(selectedBizBoxes).map(cb => parseInt(cb.value, 10));
 
     const studentName = document.getElementById('bulk-student-name').value.trim() || 'Vega Setiawan';
     const major = document.getElementById('bulk-major').value.trim() || 'S1 Sistem Informasi';
@@ -1285,6 +1407,8 @@ class App {
           categories: categories.length > 0 ? categories : null,
           contact_types: contactTypes.length > 0 ? contactTypes : null,
           min_score: minScore,
+          max_distance_km: maxDist > 0 ? maxDist : null,
+          selected_business_ids: selectedBizIds.length > 0 ? selectedBizIds : null,
           student_name: studentName,
           major: major,
           university: university || null,
@@ -1384,26 +1508,86 @@ class App {
     this.openModal('modal-add-outreach');
   }
 
+  fillModalContact(type) {
+    const select = document.getElementById('modal-outreach-biz-select');
+    const bizId = select?.value;
+    if (!bizId) return;
+    const biz = this.businessesCache.find(b => b.id == bizId);
+    if (!biz) return;
+
+    const contactInput = document.getElementById('modal-outreach-email');
+    if (type === 'wa' && biz.phone) {
+      contactInput.value = biz.phone;
+      this.showToast(`Kontak diisi No. WA: ${biz.phone}`, 'info');
+    } else if (type === 'email' && biz.email) {
+      contactInput.value = biz.email;
+      this.showToast(`Kontak diisi Email: ${biz.email}`, 'info');
+    } else {
+      this.showToast(`Bisnis ${biz.name} tidak memiliki data ${type === 'wa' ? 'No. WhatsApp/Telepon' : 'Email'} tersimpan.`, 'error');
+    }
+  }
+
+  async generateSingleAIOutreach() {
+    const select = document.getElementById('modal-outreach-biz-select');
+    const bizId = select?.value;
+    if (!bizId) {
+      this.showToast('Pilih bisnis target terlebih dahulu', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-generate-single-ai');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Menyusun pesan AI...`;
+
+    const channel = document.getElementById('bulk-channel')?.value || 'whatsapp';
+    const studentName = document.getElementById('bulk-student-name')?.value.trim() || 'Vega Setiawan';
+    const major = document.getElementById('bulk-major')?.value.trim() || 'S1 Sistem Informasi';
+    const university = document.getElementById('bulk-university')?.value.trim();
+    const promptContext = document.getElementById('bulk-prompt-context')?.value.trim();
+
+    try {
+      const res = await fetch('/api/outreach/generate-single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: parseInt(bizId, 10),
+          channel: channel,
+          student_name: studentName,
+          major: major,
+          university: university || null,
+          prompt_context: promptContext || null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Gagal generate pesan');
+      }
+
+      const data = await res.json();
+      const subjectInput = document.getElementById('modal-outreach-subject');
+      const bodyInput = document.getElementById('modal-outreach-body');
+      const contactInput = document.getElementById('modal-outreach-email');
+
+      if (subjectInput && data.subject) subjectInput.value = data.subject;
+      if (bodyInput && data.message) bodyInput.value = data.message;
+      if (contactInput && !contactInput.value) {
+        contactInput.value = data.phone || data.email || '';
+      }
+
+      this.showToast(`Pesan personalisasi AI untuk ${data.business_name} berhasil disusun!`, 'success');
+    } catch (err) {
+      this.showToast('Gagal generate AI: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `⚡ Generate dengan AI`;
+    }
+  }
+
   onOutreachBizChange(bizId) {
     const biz = this.businessesCache.find(b => b.id == bizId);
     if (biz) {
       document.getElementById('modal-outreach-email').value = biz.phone || biz.email || '';
-      document.getElementById('modal-outreach-body').value =
-`Kepada Yth. Pimpinan / Pengelola ${biz.name},
-
-Perkenalkan saya mahasiswa yang sedang melakukan penyusunan tugas akhir / skripsi di bidang Sistem Informasi.
-
-Berdasarkan pengamatan kami terhadap aktivitas operasional ${biz.name}, kami sangat tertarik untuk mengajukan ${biz.name} sebagai studi kasus penelitian perancangan dan pengembangan sistem informasi.
-
-Adapun penelitian ini bertujuan untuk membantu memetakan kebutuhan digitalisasi proses bisnis dan memberikan rekomendasi solusi teknologi yang tepat guna tanpa memungut biaya apapun.
-
-Besar harapan kami untuk dapat berdiskusi atau melakukan wawancara singkat terkait kesediaan pihak ${biz.name}.
-
-Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan terima kasih.
-
-Hormat kami,
-[Nama Mahasiswa]
-[Kontak WhatsApp / Telp]`;
     }
   }
 
@@ -1587,6 +1771,115 @@ Hormat kami,
   closeModal(modalId) {
     const el = document.getElementById(modalId);
     if (el) el.classList.remove('active');
+  }
+
+  // --- Manual Business Addition & Parsing ---
+  openModalAddManualBusiness() {
+    const form = document.getElementById('form-add-manual-business');
+    if (form) form.reset();
+    document.getElementById('manual-parse-url').value = '';
+
+    // Pre-fill latitude and longitude from current scan origin if present
+    const latInput = document.getElementById('manual-biz-lat');
+    const lonInput = document.getElementById('manual-biz-lon');
+    if (latInput && this.scanOriginLat) latInput.value = this.scanOriginLat;
+    if (lonInput && this.scanOriginLon) lonInput.value = this.scanOriginLon;
+
+    this.openModal('modal-add-manual-business');
+  }
+
+  async parseMapsLink() {
+    const url = document.getElementById('manual-parse-url').value.trim();
+    if (!url) {
+      this.showToast('Masukkan URL Google Maps atau link website terlebih dahulu', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-parse-link');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Parsing...`;
+
+    try {
+      const res = await fetch('/api/discovery/parse-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Gagal membaca link');
+      }
+
+      const data = await res.json();
+      if (data.name) document.getElementById('manual-biz-name').value = data.name;
+      if (data.address) document.getElementById('manual-biz-address').value = data.address;
+      if (data.latitude) document.getElementById('manual-biz-lat').value = data.latitude;
+      if (data.longitude) document.getElementById('manual-biz-lon').value = data.longitude;
+      if (data.website) document.getElementById('manual-biz-website').value = data.website;
+
+      this.showToast('Berhasil mengekstrak informasi dari link!', 'success');
+    } catch (err) {
+      this.showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `🔍 Parse Link`;
+    }
+  }
+
+  async submitManualBusiness() {
+    const name = document.getElementById('manual-biz-name').value.trim();
+    if (!name) {
+      this.showToast('Nama bisnis wajib diisi', 'error');
+      return;
+    }
+
+    const category = document.getElementById('manual-biz-category').value;
+    const address = document.getElementById('manual-biz-address').value.trim();
+    const phone = document.getElementById('manual-biz-phone').value.trim();
+    const email = document.getElementById('manual-biz-email').value.trim();
+    const website = document.getElementById('manual-biz-website').value.trim();
+    const lat = parseFloat(document.getElementById('manual-biz-lat').value) || null;
+    const lon = parseFloat(document.getElementById('manual-biz-lon').value) || null;
+    const notes = document.getElementById('manual-biz-notes').value.trim();
+
+    const btn = document.getElementById('btn-submit-manual-biz');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Menyimpan ke database...`;
+
+    try {
+      const res = await fetch('/api/businesses/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name,
+          category: category,
+          address: address || null,
+          phone: phone || null,
+          email: email || null,
+          website: website || null,
+          latitude: lat,
+          longitude: lon,
+          notes: notes || null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Gagal menyimpan bisnis manual');
+      }
+
+      const data = await res.json();
+      this.showToast(`Berhasil menambahkan "${name}" ke database tersimpan & dinilai AI!`, 'success');
+      this.closeModal('modal-add-manual-business');
+      this.switchTab('saved');
+      this.loadSavedBusinesses(1);
+    } catch (err) {
+      this.showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `Simpan Bisnis ke Database`;
+    }
   }
 
   showToast(message, type = 'info') {
