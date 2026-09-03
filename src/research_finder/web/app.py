@@ -159,6 +159,10 @@ class OutreachCreateRequest(BaseModel):
     email_body: str
     status: str = "draft"
 
+class BulkStatusUpdateRequest(BaseModel):
+    ids: list[int]
+    status: str
+
 class BusinessUpdateRequest(BaseModel):
     notes: str | None = None
     status: str | None = None
@@ -1110,13 +1114,47 @@ def create_app() -> FastAPI:
     # --- Outreach ---
 
     @app.get("/api/outreach")
-    async def list_outreach() -> list[dict[str, Any]]:
+    async def list_outreach(
+        page: int = Query(1, ge=1),
+        limit: int = Query(10, ge=0),
+        status: str | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
         async with get_session() as session:
-            query = (
-                select(OutreachModel, BusinessModel.name.label("business_name"))
-                .join(BusinessModel, OutreachModel.business_id == BusinessModel.id, isouter=True)
-                .order_by(OutreachModel.created_at.desc())
+            query = select(OutreachModel, BusinessModel.name.label("business_name")).join(
+                BusinessModel, OutreachModel.business_id == BusinessModel.id, isouter=True
             )
+            count_query = select(func.count(OutreachModel.id)).join(
+                BusinessModel, OutreachModel.business_id == BusinessModel.id, isouter=True
+            )
+
+            filters = []
+            if status and status.strip() and status != "all":
+                try:
+                    filters.append(OutreachModel.status == OutreachStatus(status))
+                except ValueError:
+                    pass
+
+            if search and search.strip():
+                term = f"%{search.strip()}%"
+                filters.append(
+                    BusinessModel.name.ilike(term)
+                    | OutreachModel.email_to.ilike(term)
+                    | OutreachModel.email_subject.ilike(term)
+                    | OutreachModel.email_body.ilike(term)
+                )
+
+            if filters:
+                query = query.where(*filters)
+                count_query = count_query.where(*filters)
+
+            total = await session.scalar(count_query) or 0
+            query = query.order_by(OutreachModel.created_at.desc())
+
+            if limit > 0:
+                offset = (page - 1) * limit
+                query = query.offset(offset).limit(limit)
+
             result = await session.execute(query)
             rows = result.all()
 
@@ -1136,7 +1174,16 @@ def create_app() -> FastAPI:
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                 )
-            return items
+
+            total_pages = max(1, math.ceil(total / limit)) if limit > 0 else 1
+
+            return {
+                "items": items,
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "total_pages": total_pages,
+            }
 
     @app.post("/api/outreach")
     async def create_outreach(req: OutreachCreateRequest) -> dict[str, Any]:
@@ -1163,6 +1210,20 @@ def create_app() -> FastAPI:
             o.status = OutreachStatus(status)
             await session.commit()
             return {"status": "ok", "id": outreach_id, "status": o.status.value}
+
+    @app.put("/api/outreach/bulk-status")
+    async def bulk_update_outreach_status(req: BulkStatusUpdateRequest) -> dict[str, Any]:
+        async with get_session() as session:
+            if not req.ids:
+                return {"status": "ok", "updated_count": 0}
+            new_status = OutreachStatus(req.status)
+            query = select(OutreachModel).where(OutreachModel.id.in_(req.ids))
+            res = await session.execute(query)
+            items = res.scalars().all()
+            for item in items:
+                item.status = new_status
+            await session.commit()
+            return {"status": "ok", "updated_count": len(items)}
 
     @app.delete("/api/outreach/{outreach_id}")
     async def delete_outreach(outreach_id: int) -> dict[str, Any]:
