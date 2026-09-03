@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
 from research_finder.application.ai_service import AIAnalysisService
 from research_finder.application.discovery_service import DiscoveryService
@@ -163,6 +163,9 @@ class BulkStatusUpdateRequest(BaseModel):
     ids: list[int]
     status: str
 
+class BulkDeleteOutreachRequest(BaseModel):
+    ids: list[int]
+
 class BusinessUpdateRequest(BaseModel):
     notes: str | None = None
     status: str | None = None
@@ -196,6 +199,31 @@ class SingleOutreachGenerateRequest(BaseModel):
     major: str = "S1 Sistem Informasi"
     university: str | None = None
     prompt_context: str | None = None
+    save_to_db: bool = True
+
+
+async def deduplicate_outreach() -> None:
+    async with get_session() as session:
+        query = (
+            select(OutreachModel.business_id)
+            .group_by(OutreachModel.business_id)
+            .having(func.count(OutreachModel.id) > 1)
+        )
+        res = await session.execute(query)
+        dup_biz_ids = res.scalars().all()
+
+        for biz_id in dup_biz_ids:
+            records_res = await session.execute(
+                select(OutreachModel)
+                .where(OutreachModel.business_id == biz_id)
+                .order_by(OutreachModel.id.desc())
+            )
+            records = records_res.scalars().all()
+            for dup in records[1:]:
+                await session.delete(dup)
+
+        if dup_biz_ids:
+            await session.commit()
 
 
 def create_app() -> FastAPI:
@@ -216,6 +244,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event() -> None:
         await init_db()
+        await deduplicate_outreach()
 
     # --- API Endpoints ---
 
@@ -1118,13 +1147,14 @@ def create_app() -> FastAPI:
         page: int = Query(1, ge=1),
         limit: int = Query(10, ge=0),
         status: str | None = None,
+        category: str | None = None,
+        min_score: float | None = None,
+        max_distance_km: float | None = None,
+        contact_type: str | None = None,
         search: str | None = None,
     ) -> dict[str, Any]:
         async with get_session() as session:
-            query = select(OutreachModel, BusinessModel.name.label("business_name")).join(
-                BusinessModel, OutreachModel.business_id == BusinessModel.id, isouter=True
-            )
-            count_query = select(func.count(OutreachModel.id)).join(
+            query = select(OutreachModel, BusinessModel).join(
                 BusinessModel, OutreachModel.business_id == BusinessModel.id, isouter=True
             )
 
@@ -1134,6 +1164,21 @@ def create_app() -> FastAPI:
                     filters.append(OutreachModel.status == OutreachStatus(status))
                 except ValueError:
                     pass
+
+            if category and category.strip() and category != "all":
+                filters.append(BusinessModel.category == category)
+
+            if min_score is not None and min_score > 0:
+                filters.append(BusinessModel.total_score >= min_score)
+
+            if contact_type == "wa":
+                filters.append(
+                    OutreachModel.email_to.isnot(None)
+                    & (OutreachModel.email_to != "")
+                    & (~OutreachModel.email_to.contains("@"))
+                )
+            elif contact_type == "email":
+                filters.append(OutreachModel.email_to.contains("@"))
 
             if search and search.strip():
                 term = f"%{search.strip()}%"
@@ -1146,25 +1191,46 @@ def create_app() -> FastAPI:
 
             if filters:
                 query = query.where(*filters)
-                count_query = count_query.where(*filters)
-
-            total = await session.scalar(count_query) or 0
-            query = query.order_by(OutreachModel.created_at.desc())
-
-            if limit > 0:
-                offset = (page - 1) * limit
-                query = query.offset(offset).limit(limit)
 
             result = await session.execute(query)
             rows = result.all()
 
+            # Distance filtering if max_distance_km specified
+            if max_distance_km is not None and max_distance_km > 0:
+                last_loc = await get_last_scan_location(session)
+                last_lat = last_loc.get("latitude")
+                last_lon = last_loc.get("longitude")
+                if last_lat is not None and last_lon is not None:
+                    filtered_rows = []
+                    for o, b in rows:
+                        if b and b.latitude is not None and b.longitude is not None:
+                            dist_m = haversine_distance(last_lat, last_lon, b.latitude, b.longitude)
+                            if (dist_m / 1000.0) <= max_distance_km:
+                                filtered_rows.append((o, b))
+                        else:
+                            filtered_rows.append((o, b))
+                    rows = filtered_rows
+
+            total = len(rows)
+
+            # Sort by created_at desc
+            rows.sort(key=lambda r: r[0].created_at or "", reverse=True)
+
+            if limit > 0:
+                offset = (page - 1) * limit
+                rows = rows[offset : offset + limit]
+
             items = []
-            for o, biz_name in rows:
+            for o, b in rows:
                 items.append(
                     {
                         "id": o.id,
                         "business_id": o.business_id,
-                        "business_name": biz_name or f"Business #{o.business_id}",
+                        "business_name": b.name if b else f"Business #{o.business_id}",
+                        "category": b.category if b else None,
+                        "total_score": b.total_score if b else 0,
+                        "phone": b.phone if b else None,
+                        "email": b.email if b else None,
                         "topic_id": o.topic_id,
                         "email_to": o.email_to,
                         "email_subject": o.email_subject,
@@ -1188,28 +1254,31 @@ def create_app() -> FastAPI:
     @app.post("/api/outreach")
     async def create_outreach(req: OutreachCreateRequest) -> dict[str, Any]:
         async with get_session() as session:
-            o = OutreachModel(
-                business_id=req.business_id,
-                topic_id=req.topic_id,
-                email_to=req.email_to,
-                email_subject=req.email_subject,
-                email_body=req.email_body,
-                status=OutreachStatus(req.status),
+            existing = await session.scalar(
+                select(OutreachModel).where(OutreachModel.business_id == req.business_id)
             )
-            session.add(o)
-            await session.commit()
-            await session.refresh(o)
-            return {"status": "ok", "id": o.id}
-
-    @app.put("/api/outreach/{outreach_id}/status")
-    async def update_outreach_status(outreach_id: int, status: str) -> dict[str, Any]:
-        async with get_session() as session:
-            o = await session.scalar(select(OutreachModel).where(OutreachModel.id == outreach_id))
-            if not o:
-                raise HTTPException(status_code=404, detail="Outreach not found")
-            o.status = OutreachStatus(status)
-            await session.commit()
-            return {"status": "ok", "id": outreach_id, "status": o.status.value}
+            if existing:
+                existing.email_to = req.email_to
+                existing.email_subject = req.email_subject
+                existing.email_body = req.email_body
+                existing.status = OutreachStatus(req.status)
+                if req.topic_id:
+                    existing.topic_id = req.topic_id
+                await session.commit()
+                return {"status": "ok", "id": existing.id}
+            else:
+                o = OutreachModel(
+                    business_id=req.business_id,
+                    topic_id=req.topic_id,
+                    email_to=req.email_to,
+                    email_subject=req.email_subject,
+                    email_body=req.email_body,
+                    status=OutreachStatus(req.status),
+                )
+                session.add(o)
+                await session.commit()
+                await session.refresh(o)
+                return {"status": "ok", "id": o.id}
 
     @app.put("/api/outreach/bulk-status")
     async def bulk_update_outreach_status(req: BulkStatusUpdateRequest) -> dict[str, Any]:
@@ -1224,6 +1293,34 @@ def create_app() -> FastAPI:
                 item.status = new_status
             await session.commit()
             return {"status": "ok", "updated_count": len(items)}
+
+    @app.delete("/api/outreach/clear-all")
+    async def clear_all_outreach() -> dict[str, Any]:
+        async with get_session() as session:
+            count = await session.scalar(select(func.count(OutreachModel.id))) or 0
+            await session.execute(delete(OutreachModel))
+            await session.commit()
+            return {"status": "ok", "deleted_count": count}
+
+    @app.post("/api/outreach/bulk-delete")
+    async def bulk_delete_outreach_endpoint(req: BulkDeleteOutreachRequest) -> dict[str, Any]:
+        async with get_session() as session:
+            if not req.ids:
+                return {"status": "ok", "deleted_count": 0}
+            stmt = delete(OutreachModel).where(OutreachModel.id.in_(req.ids))
+            await session.execute(stmt)
+            await session.commit()
+            return {"status": "ok", "deleted_count": len(req.ids)}
+
+    @app.put("/api/outreach/{outreach_id}/status")
+    async def update_outreach_status(outreach_id: int, status: str) -> dict[str, Any]:
+        async with get_session() as session:
+            o = await session.scalar(select(OutreachModel).where(OutreachModel.id == outreach_id))
+            if not o:
+                raise HTTPException(status_code=404, detail="Outreach not found")
+            o.status = OutreachStatus(status)
+            await session.commit()
+            return {"status": "ok", "id": outreach_id, "status": o.status.value}
 
     @app.delete("/api/outreach/{outreach_id}")
     async def delete_outreach(outreach_id: int) -> dict[str, Any]:
@@ -1300,13 +1397,16 @@ def create_app() -> FastAPI:
                 query = query.where(BusinessModel.total_score >= req.min_score)
 
             if req.contact_types:
+                c_conditions = []
                 for ct in req.contact_types:
                     if ct == "phone":
-                        query = query.where(BusinessModel.phone.isnot(None), BusinessModel.phone != "")
+                        c_conditions.append((BusinessModel.phone.isnot(None)) & (BusinessModel.phone != ""))
                     elif ct == "email":
-                        query = query.where(BusinessModel.email.isnot(None), BusinessModel.email != "")
+                        c_conditions.append((BusinessModel.email.isnot(None)) & (BusinessModel.email != ""))
                     elif ct == "website":
-                        query = query.where(BusinessModel.website.isnot(None), BusinessModel.website != "")
+                        c_conditions.append((BusinessModel.website.isnot(None)) & (BusinessModel.website != ""))
+                if c_conditions:
+                    query = query.where(or_(*c_conditions))
 
             query = query.order_by(BusinessModel.total_score.desc().nullslast(), BusinessModel.id.desc())
             result = await session.execute(query)
@@ -1339,6 +1439,23 @@ def create_app() -> FastAPI:
                 )
 
             total_all = await session.scalar(select(func.count(BusinessModel.id))) or 0
+
+            # Fallback if strict filter returned 0 but total_all > 0
+            if len(matching_items) == 0 and total_all > 0:
+                all_res = await session.execute(select(BusinessModel).order_by(BusinessModel.id.desc()).limit(50))
+                all_biz = all_res.scalars().all()
+                for b in all_biz:
+                    matching_items.append(
+                        {
+                            "id": b.id,
+                            "name": b.name,
+                            "category": b.category or "Umum",
+                            "phone": b.phone,
+                            "email": b.email,
+                            "distance_text": None,
+                        }
+                    )
+
             return {
                 "matching_count": len(matching_items),
                 "total_all": total_all,
@@ -1366,27 +1483,57 @@ def create_app() -> FastAPI:
             if ai_data:
                 context = f"Masalah: {ai_data.operational_problems or ''}. Solusi: {ai_data.info_system_opportunities or ''}"
 
-            res = await ai_provider.generate_personalized_outreach(
-                business_name=b.name,
-                category=b.category or "Umum",
-                address=b.address or "",
-                context=context,
-                channel=req.channel,
-                student_name=req.student_name,
-                major=req.major,
-                university=req.university,
-                prompt_context=req.prompt_context,
-            )
+        res = await ai_provider.generate_personalized_outreach(
+            business_name=b.name,
+            category=b.category or "Umum",
+            address=b.address or "",
+            context=context,
+            channel=req.channel,
+            student_name=req.student_name,
+            major=req.major,
+            university=req.university,
+            prompt_context=req.prompt_context,
+        )
 
-            return {
-                "status": "ok",
-                "business_id": b.id,
-                "business_name": b.name,
-                "phone": b.phone,
-                "email": b.email,
-                "subject": res.get("subject", ""),
-                "message": res.get("message", ""),
-            }
+        contact_to = (b.phone if req.channel == "whatsapp" else b.email) or "-"
+        outreach_id = None
+
+        if req.save_to_db:
+            async with get_session() as save_session:
+                existing = await save_session.scalar(
+                    select(OutreachModel).where(OutreachModel.business_id == b.id)
+                )
+                if existing:
+                    existing.email_to = contact_to
+                    existing.email_subject = res.get("subject", f"Permohonan Riset - {b.name}")
+                    existing.email_body = res.get("message", "")
+                    existing.status = OutreachStatus.DRAFT
+                    await save_session.commit()
+                    outreach_id = existing.id
+                else:
+                    outreach = OutreachModel(
+                        business_id=b.id,
+                        email_to=contact_to,
+                        email_subject=res.get("subject", f"Permohonan Riset - {b.name}"),
+                        email_body=res.get("message", ""),
+                        status=OutreachStatus.DRAFT,
+                    )
+                    save_session.add(outreach)
+                    await save_session.commit()
+                    await save_session.refresh(outreach)
+                    outreach_id = outreach.id
+
+        return {
+            "status": "ok",
+            "id": outreach_id,
+            "business_id": b.id,
+            "business_name": b.name,
+            "phone": b.phone,
+            "email": b.email,
+            "contact_to": contact_to,
+            "subject": res.get("subject", ""),
+            "message": res.get("message", ""),
+        }
 
     @app.post("/api/outreach/generate-bulk")
     async def generate_bulk_outreach(req: BulkOutreachRequest) -> dict[str, Any]:
@@ -1453,7 +1600,7 @@ def create_app() -> FastAPI:
             if not businesses:
                 return {"status": "ok", "generated_count": 0, "items": []}
 
-            generated_items = []
+            target_data = []
             for b in businesses:
                 ai_data = await session.scalar(
                     select(AIAnalysisModel).where(AIAnalysisModel.business_id == b.id)
@@ -1462,50 +1609,77 @@ def create_app() -> FastAPI:
                 if ai_data:
                     context = f"Masalah: {ai_data.operational_problems or ''}. Solusi: {ai_data.info_system_opportunities or ''}"
 
-                res = await ai_provider.generate_personalized_outreach(
-                    business_name=b.name,
-                    category=b.category or "Umum",
-                    address=b.address or "",
-                    context=context,
-                    channel=req.channel,
-                    student_name=req.student_name,
-                    major=req.major,
-                    university=req.university,
-                    prompt_context=req.prompt_context,
-                )
-
-                contact_to = (b.phone if req.channel == "whatsapp" else b.email) or "-"
-
-                outreach = OutreachModel(
-                    business_id=b.id,
-                    email_to=contact_to,
-                    email_subject=res.get("subject", f"Permohonan Riset - {b.name}"),
-                    email_body=res.get("message", ""),
-                    status=OutreachStatus.DRAFT,
-                )
-                session.add(outreach)
-                await session.flush()
-
-                generated_items.append(
+                target_data.append(
                     {
-                        "id": outreach.id,
-                        "business_id": b.id,
-                        "business_name": b.name,
-                        "contact_to": contact_to,
-                        "channel": req.channel,
-                        "subject": outreach.email_subject,
-                        "message": outreach.email_body,
+                        "id": b.id,
+                        "name": b.name,
+                        "category": b.category or "Umum",
+                        "address": b.address or "",
                         "phone": b.phone,
                         "email": b.email,
+                        "context": context,
                     }
                 )
 
-            await session.commit()
-            return {
-                "status": "ok",
-                "generated_count": len(generated_items),
-                "items": generated_items,
-            }
+        generated_items = []
+        for item in target_data:
+            res = await ai_provider.generate_personalized_outreach(
+                business_name=item["name"],
+                category=item["category"],
+                address=item["address"],
+                context=item["context"],
+                channel=req.channel,
+                student_name=req.student_name,
+                major=req.major,
+                university=req.university,
+                prompt_context=req.prompt_context,
+            )
+
+            contact_to = (item["phone"] if req.channel == "whatsapp" else item["email"]) or "-"
+
+            async with get_session() as save_session:
+                existing = await save_session.scalar(
+                    select(OutreachModel).where(OutreachModel.business_id == item["id"])
+                )
+                if existing:
+                    existing.email_to = contact_to
+                    existing.email_subject = res.get("subject", f"Permohonan Riset - {item['name']}")
+                    existing.email_body = res.get("message", "")
+                    existing.status = OutreachStatus.DRAFT
+                    await save_session.commit()
+                    outreach_id = existing.id
+                else:
+                    outreach = OutreachModel(
+                        business_id=item["id"],
+                        email_to=contact_to,
+                        email_subject=res.get("subject", f"Permohonan Riset - {item['name']}"),
+                        email_body=res.get("message", ""),
+                        status=OutreachStatus.DRAFT,
+                    )
+                    save_session.add(outreach)
+                    await save_session.commit()
+                    await save_session.refresh(outreach)
+                    outreach_id = outreach.id
+
+            generated_items.append(
+                {
+                    "id": outreach_id,
+                    "business_id": item["id"],
+                    "business_name": item["name"],
+                    "contact_to": contact_to,
+                    "channel": req.channel,
+                    "subject": res.get("subject", f"Permohonan Riset - {item['name']}"),
+                    "message": res.get("message", ""),
+                    "phone": item["phone"],
+                    "email": item["email"],
+                }
+            )
+
+        return {
+            "status": "ok",
+            "generated_count": len(generated_items),
+            "items": generated_items,
+        }
 
     # --- Export ---
 

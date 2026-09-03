@@ -1383,6 +1383,11 @@ class App {
     checkboxes.forEach(cb => { cb.checked = checked; });
   }
 
+  cancelBulkAIGenerate() {
+    this.bulkAIGenerateRunning = false;
+    this.closeModal('modal-bulk-ai-progress');
+  }
+
   async runBulkAIGenerate() {
     const channel = document.getElementById('bulk-channel').value;
     const limit = parseInt(document.getElementById('bulk-limit').value) || 5;
@@ -1404,43 +1409,162 @@ class App {
     const university = document.getElementById('bulk-university').value.trim();
     const promptContext = document.getElementById('bulk-prompt-context')?.value.trim();
 
-    const btn = document.getElementById('btn-generate-bulk');
-    btn.disabled = true;
-    btn.innerHTML = `<span class="spinner"></span> Menyusun ${limit} pesan personalisasi AI...`;
+    let targetBusinesses = [];
 
-    try {
-      const res = await fetch('/api/outreach/generate-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          limit: limit,
-          channel: channel,
-          categories: categories.length > 0 ? categories : null,
-          contact_types: contactTypes.length > 0 ? contactTypes : null,
-          min_score: minScore,
-          max_distance_km: maxDist > 0 ? maxDist : null,
-          selected_business_ids: selectedBizIds.length > 0 ? selectedBizIds : null,
-          student_name: studentName,
-          major: major,
-          university: university || null,
-          prompt_context: promptContext || null
-        })
-      });
+    if (selectedBizIds.length > 0) {
+      targetBusinesses = this.businessesCache.filter(b => selectedBizIds.includes(b.id)).slice(0, limit);
+    } else {
+      try {
+        const res = await fetch('/api/outreach/matching-count', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            categories: categories.length > 0 ? categories : null,
+            contact_types: contactTypes.length > 0 ? contactTypes : null,
+            min_score: minScore,
+            max_distance_km: maxDist > 0 ? maxDist : null,
+          })
+        });
+        const data = await res.json();
+        targetBusinesses = (data.businesses || []).slice(0, limit);
+      } catch (err) {
+        console.error('Failed to fetch matching businesses:', err);
+      }
+    }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Gagal generate pesan');
+    if (targetBusinesses.length === 0) {
+      if (this.businessesCache && this.businessesCache.length > 0) {
+        targetBusinesses = this.businessesCache.slice(0, limit);
+        this.showToast('Filter terlalu spesifik. Menggunakan bisnis tersimpan untuk AI Outreach.', 'info');
+      } else {
+        try {
+          const res = await fetch('/api/businesses');
+          const list = await res.json();
+          this.businessesCache = list;
+          targetBusinesses = list.slice(0, limit);
+        } catch (err) {
+          console.error('Failed to fetch businesses:', err);
+        }
+      }
+    }
+
+    if (targetBusinesses.length === 0) {
+      this.showToast('Belum ada data bisnis tersimpan di database. Silakan lakukan Discovery terlebih dahulu.', 'warning');
+      return;
+    }
+
+    this.bulkAIGenerateRunning = true;
+    this.openModal('modal-bulk-ai-progress');
+
+    const queueCountEl = document.getElementById('ai-bulk-queue-count');
+    const queueListEl = document.getElementById('ai-bulk-queue-list');
+    const progressStatusEl = document.getElementById('ai-bulk-progress-status');
+    const progressPercentEl = document.getElementById('ai-bulk-progress-percent');
+    const progressBarEl = document.getElementById('ai-bulk-progress-bar');
+    const timerLabelEl = document.getElementById('ai-bulk-timer-label');
+    const currentItemNameEl = document.getElementById('ai-bulk-current-item-name');
+    const btnCancel = document.getElementById('btn-cancel-ai-bulk');
+    const btnFinish = document.getElementById('btn-finish-ai-bulk');
+
+    if (btnCancel) btnCancel.style.display = 'inline-block';
+    if (btnFinish) btnFinish.style.display = 'none';
+
+    if (queueCountEl) queueCountEl.textContent = `${targetBusinesses.length} bisnis`;
+    if (progressBarEl) progressBarEl.style.width = '0%';
+    if (progressPercentEl) progressPercentEl.textContent = '0%';
+    if (progressStatusEl) progressStatusEl.textContent = `Diproses 0 dari ${targetBusinesses.length} bisnis`;
+
+    if (queueListEl) {
+      queueListEl.innerHTML = targetBusinesses.map((b, idx) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--bg-card-border);" id="ai-item-row-${b.id}">
+          <div>
+            <b style="font-size:12.5px;">${idx + 1}. ${this.escapeHtml(b.name)}</b>
+            <div style="font-size:11px; color:var(--text-muted);">${this.escapeHtml(b.category || 'Umum')} • ${this.escapeHtml(b.phone || b.email || 'Tanpa Kontak')}</div>
+          </div>
+          <span class="badge badge-secondary" id="ai-item-badge-${b.id}">⏳ Menunggu AI</span>
+        </div>
+      `).join('');
+    }
+
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      if (!this.bulkAIGenerateRunning) {
+        clearInterval(timerInterval);
+        return;
+      }
+      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+      const secs = String(elapsedSec % 60).padStart(2, '0');
+      if (timerLabelEl) timerLabelEl.textContent = `⏱️ Waktu berjalan: ${mins}:${secs}`;
+    }, 1000);
+
+    let successCount = 0;
+    const total = targetBusinesses.length;
+
+    for (let i = 0; i < total; i++) {
+      if (!this.bulkAIGenerateRunning) break;
+
+      const b = targetBusinesses[i];
+      const percent = Math.round(((i) / total) * 100);
+
+      if (progressStatusEl) progressStatusEl.textContent = `Sedang memproses ${i + 1} dari ${total} bisnis`;
+      if (progressBarEl) progressBarEl.style.width = `${percent}%`;
+      if (progressPercentEl) progressPercentEl.textContent = `${percent}%`;
+      if (currentItemNameEl) currentItemNameEl.textContent = `🤖 Menyusun pesan untuk ${b.name}...`;
+
+      const badge = document.getElementById(`ai-item-badge-${b.id}`);
+      if (badge) {
+        badge.className = 'badge badge-purple';
+        badge.textContent = '🔄 Menyusun AI...';
       }
 
-      const data = await res.json();
-      this.showToast(`Berhasil menyusun ${data.generated_count} pesan personalisasi AI!`, 'success');
-      this.loadOutreach();
-    } catch (err) {
-      this.showToast(err.message, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `⚡ Generate Pesan Massal AI`;
+      try {
+        const res = await fetch('/api/outreach/generate-single', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: b.id,
+            channel: channel,
+            student_name: studentName,
+            major: major,
+            university: university || null,
+            prompt_context: promptContext || null,
+            save_to_db: true
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error('Endpoint error');
+        }
+
+        await res.json();
+        successCount++;
+
+        if (badge) {
+          badge.className = 'badge badge-success';
+          badge.textContent = '✅ Pesan AI Dibuat';
+        }
+      } catch (err) {
+        console.error(`AI generation failed for ${b.name}:`, err);
+        if (badge) {
+          badge.className = 'badge badge-warning';
+          badge.textContent = '⚠️ Template Standard';
+        }
+      }
     }
+
+    clearInterval(timerInterval);
+
+    if (progressStatusEl) progressStatusEl.textContent = `Selesai: ${successCount} dari ${total} pesan AI berhasil dibuat!`;
+    if (progressBarEl) progressBarEl.style.width = '100%';
+    if (progressPercentEl) progressPercentEl.textContent = '100%';
+    if (currentItemNameEl) currentItemNameEl.textContent = '🎉 Semua pesan siap dikirim!';
+
+    if (btnCancel) btnCancel.style.display = 'none';
+    if (btnFinish) btnFinish.style.display = 'inline-block';
+
+    this.showToast(`Proses selesai! ${successCount} draf pesan outreach AI dibuat.`, 'success');
+    this.loadOutreach();
   }
 
   async loadOutreach() {
@@ -1449,13 +1573,20 @@ class App {
     if (!tbody) return;
 
     try {
+      const catVal = document.getElementById('outreach-filter-category')?.value || 'all';
+      const scoreVal = parseFloat(document.getElementById('outreach-filter-score')?.value) || 0;
+      const distVal = parseFloat(document.getElementById('outreach-filter-distance')?.value) || 0;
+      const statusVal = document.getElementById('outreach-filter-status')?.value || 'all';
+      const contactVal = document.getElementById('outreach-filter-contact')?.value || 'all';
+      const searchVal = document.getElementById('outreach-search-input')?.value.trim() || '';
+
       let url = `/api/outreach?page=${this.outreachPage}&limit=${this.outreachLimit}`;
-      if (this.outreachStatusFilter && this.outreachStatusFilter !== 'all') {
-        url += `&status=${encodeURIComponent(this.outreachStatusFilter)}`;
-      }
-      if (this.outreachSearch) {
-        url += `&search=${encodeURIComponent(this.outreachSearch)}`;
-      }
+      if (statusVal !== 'all') url += `&status=${encodeURIComponent(statusVal)}`;
+      if (catVal !== 'all') url += `&category=${encodeURIComponent(catVal)}`;
+      if (scoreVal > 0) url += `&min_score=${scoreVal}`;
+      if (distVal > 0) url += `&max_distance_km=${distVal}`;
+      if (contactVal !== 'all') url += `&contact_type=${encodeURIComponent(contactVal)}`;
+      if (searchVal) url += `&search=${encodeURIComponent(searchVal)}`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -1477,7 +1608,7 @@ class App {
       this.updateOutreachPaginationControls(items.length);
 
       if (items.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Belum ada draf outreach yang sesuai. Klik "⚡ Generate Pesan Massal AI" di atas untuk membuat pesan personalisasi secara otomatis.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Belum ada draf outreach yang sesuai kriteria filter.</td></tr>`;
         return;
       }
 
@@ -1492,7 +1623,10 @@ class App {
           </td>
           <td>
             <b>${this.escapeHtml(o.business_name)}</b>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">ID Bisnis: #${o.business_id}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+              ${o.category ? `<span class="badge badge-secondary" style="font-size:10px; padding:2px 6px;">${this.escapeHtml(o.category)}</span> ` : ''}
+              Skor: ${o.total_score ? o.total_score.toFixed(1) : '-'}
+            </div>
           </td>
           <td>
             <code>${this.escapeHtml(o.email_to || '-')}</code>
@@ -1523,6 +1657,64 @@ class App {
     } catch (err) {
       console.error('Failed to load outreach:', err);
     }
+  }
+
+  onOutreachFilterChange() {
+    clearTimeout(this.searchOutreachTimeout);
+    this.searchOutreachTimeout = setTimeout(() => {
+      this.outreachPage = 1;
+      this.loadOutreach();
+    }, 300);
+  }
+
+  async bulkDeleteOutreach() {
+    const ids = Array.from(this.selectedOutreachIds);
+    if (ids.length === 0) return;
+    this.showConfirmDialog({
+      icon: '🗑️',
+      title: 'Hapus Draf Outreach Terpilih',
+      message: `Apakah Anda yakin ingin menghapus ${ids.length} draft outreach terpilih?`,
+      okText: `Hapus ${ids.length} Draft`,
+      okClass: 'btn-danger',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/outreach/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+          });
+          const data = await res.json();
+          const count = (data && data.deleted_count !== undefined && data.deleted_count !== null) ? data.deleted_count : ids.length;
+          this.selectedOutreachIds.clear();
+          this.showToast(`Berhasil menghapus ${count} draft outreach`, 'info');
+          this.loadOutreach();
+        } catch (err) {
+          this.showToast('Gagal menghapus draft outreach masal', 'error');
+        }
+      }
+    });
+  }
+
+  async clearAllOutreach() {
+    this.showConfirmDialog({
+      icon: '⚠️',
+      title: 'Hapus SELURUH Pesan Outreach',
+      message: 'Apakah Anda yakin ingin menghapus SELURUH draf pesan outreach yang ada? Tindakan ini bersifat permanen dan tidak dapat dibatalkan.',
+      okText: 'Ya, Hapus Semua',
+      okClass: 'btn-danger',
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/outreach/clear-all', { method: 'DELETE' });
+          const data = await res.json();
+          const count = (data && data.deleted_count !== undefined && data.deleted_count !== null) ? data.deleted_count : 0;
+          this.selectedOutreachIds.clear();
+          this.showToast(`Berhasil menghapus seluruh data (${count} outreach)`, 'info');
+          this.loadOutreach();
+        } catch (err) {
+          this.showToast('Gagal menghapus seluruh outreach', 'error');
+        }
+      }
+    });
   }
 
   updateOutreachPaginationControls(showingCount) {
@@ -1774,15 +1966,50 @@ class App {
     }
   }
 
-  async deleteOutreach(id) {
-    if (!confirm('Hapus draft outreach ini?')) return;
-    try {
-      await fetch(`/api/outreach/${id}`, { method: 'DELETE' });
-      this.loadOutreach();
-      this.showToast('Draft dihapus', 'info');
-    } catch (err) {
-      this.showToast('Gagal menghapus draft', 'error');
+  showConfirmDialog({ icon = '⚠️', title = 'Konfirmasi Tindakan', message = '', okText = 'Ya, Lanjutkan', okClass = 'btn-danger', onConfirm }) {
+    const iconEl = document.getElementById('confirm-dialog-icon');
+    const titleEl = document.getElementById('confirm-dialog-title');
+    const msgEl = document.getElementById('confirm-dialog-message');
+    const btnOk = document.getElementById('btn-confirm-ok');
+    const btnCancel = document.getElementById('btn-confirm-cancel');
+
+    if (iconEl) iconEl.textContent = icon;
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+
+    if (btnOk) {
+      btnOk.textContent = okText;
+      btnOk.className = `btn ${okClass}`;
+      btnOk.onclick = () => {
+        this.closeModal('modal-confirm-dialog');
+        if (typeof onConfirm === 'function') onConfirm();
+      };
     }
+
+    if (btnCancel) {
+      btnCancel.onclick = () => this.closeModal('modal-confirm-dialog');
+    }
+
+    this.openModal('modal-confirm-dialog');
+  }
+
+  async deleteOutreach(id) {
+    this.showConfirmDialog({
+      icon: '🗑️',
+      title: 'Hapus Draft Outreach',
+      message: 'Apakah Anda yakin ingin menghapus draf pesan outreach ini?',
+      okText: 'Hapus Draft',
+      okClass: 'btn-danger',
+      onConfirm: async () => {
+        try {
+          await fetch(`/api/outreach/${id}`, { method: 'DELETE' });
+          this.loadOutreach();
+          this.showToast('Draft berhasil dihapus', 'info');
+        } catch (err) {
+          this.showToast('Gagal menghapus draft', 'error');
+        }
+      }
+    });
   }
 
   openModalAddOutreach() {
