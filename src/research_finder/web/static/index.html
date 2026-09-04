@@ -687,17 +687,90 @@
 
           <!-- Outreach Table Card -->
           <div class="card">
-            <div class="card-header">
+            <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
               <div>
                 <h3>Daftar Pesan Outreach & Broadcast</h3>
                 <p style="font-size: 12.5px; color: var(--text-muted);">Kelola draf pesan yang sudah digenerate AI atau dibuat manual.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" onclick="app.openModalAddOutreach()">+ Draf Manual</button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <button class="btn btn-whatsapp" onclick="app.openWaBroadcastModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  🚀 Kirim Pesan Semua (WhatsApp Broadcast)
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="app.openModalAddOutreach()">+ Draf Manual</button>
+                <button class="btn btn-danger btn-sm" onclick="app.clearAllOutreach()">🗑️ Hapus Semua Outreach</button>
+              </div>
             </div>
+
+            <!-- Toolbar Multi-Filter & Search -->
+            <div style="padding: 12px 16px; background: var(--bg-tertiary); border-bottom: 1px solid var(--bg-card-border); display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <!-- Search Input -->
+                <input type="text" id="outreach-search-input" class="form-control" placeholder="🔍 Cari nama bisnis, kontak, subjek..." style="max-width: 260px; font-size: 13px;" oninput="app.onOutreachFilterChange()">
+                
+                <!-- Category Filter -->
+                <select id="outreach-filter-category" class="form-select" style="width: auto; font-size: 12.5px;" onchange="app.onOutreachFilterChange()">
+                  <option value="all">📁 Semua Kategori</option>
+                  <option value="Food & Dining">🍽️ Kuliner / Cafe</option>
+                  <option value="Retail">🛒 Retail / Toko</option>
+                  <option value="Technology">💻 Technology</option>
+                  <option value="Health & Beauty">🏥 Kesehatan</option>
+                  <option value="Automotive">🚗 Bengkel</option>
+                  <option value="Services">🛠️ Services / Jasa</option>
+                </select>
+
+                <!-- Min Score Filter -->
+                <select id="outreach-filter-score" class="form-select" style="width: auto; font-size: 12.5px;" onchange="app.onOutreachFilterChange()">
+                  <option value="0">🎯 Semua Skor Riset</option>
+                  <option value="50">Skor ≥ 50</option>
+                  <option value="70">Skor ≥ 70 (Tinggi)</option>
+                  <option value="80">Skor ≥ 80 (Sangat Layak)</option>
+                </select>
+
+                <!-- Distance Filter -->
+                <select id="outreach-filter-distance" class="form-select" style="width: auto; font-size: 12.5px;" onchange="app.onOutreachFilterChange()">
+                  <option value="0">📍 Semua Jarak</option>
+                  <option value="1">≤ 1 km</option>
+                  <option value="3">≤ 3 km</option>
+                  <option value="5">≤ 5 km</option>
+                  <option value="10">≤ 10 km</option>
+                  <option value="20">≤ 20 km</option>
+                </select>
+
+                <!-- Status Filter -->
+                <select id="outreach-filter-status" class="form-select" style="width: auto; font-size: 12.5px;" onchange="app.onOutreachFilterChange()">
+                  <option value="all">📝 Semua Status</option>
+                  <option value="draft">📝 Draft</option>
+                  <option value="ready">⏳ Siap Kirim</option>
+                  <option value="sent">✉️ Terkirim</option>
+                  <option value="replied">💬 Dibalas</option>
+                  <option value="interested">🎉 Bersedia / ACC</option>
+                  <option value="declined">❌ Menolak</option>
+                </select>
+
+                <!-- Contact Type Filter -->
+                <select id="outreach-filter-contact" class="form-select" style="width: auto; font-size: 12.5px;" onchange="app.onOutreachFilterChange()">
+                  <option value="all">📞 Semua Tipe Kontak</option>
+                  <option value="wa">💬 Punya WhatsApp / HP</option>
+                  <option value="email">✉️ Punya Email</option>
+                </select>
+              </div>
+
+              <!-- Batch Action Options -->
+              <div id="outreach-batch-bar" style="display: none; align-items: center; gap: 8px; border-top: 1px dashed var(--bg-card-border); padding-top: 8px; margin-top: 2px;">
+                <span style="font-size: 12px; font-weight: 600; color: var(--accent-primary);" id="outreach-selected-count">0 terpilih</span>
+                <button class="btn btn-secondary btn-sm" onclick="app.bulkUpdateOutreachStatus('sent')">✉️ Tandai Terkirim</button>
+                <button class="btn btn-danger btn-sm" onclick="app.bulkDeleteOutreach()">✕ Hapus Terpilih</button>
+              </div>
+            </div>
+
             <div class="table-responsive">
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th style="width: 40px; text-align: center;">
+                      <input type="checkbox" id="outreach-select-all" onchange="app.toggleSelectAllOutreach(this.checked)">
+                    </th>
                     <th>Bisnis Target</th>
                     <th>Kontak (HP/Email)</th>
                     <th>Subjek / Ringkasan</th>
@@ -706,9 +779,35 @@
                   </tr>
                 </thead>
                 <tbody id="outreach-table-body">
-                  <tr><td colspan="5" class="empty-state">Belum ada outreach yang dibuat.</td></tr>
+                  <tr><td colspan="6" class="empty-state">Belum ada outreach yang dibuat.</td></tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Outreach Pagination Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--bg-card-border); flex-wrap: wrap; gap: 12px;" id="outreach-pagination-bar">
+              <div style="font-size: 13px; color: var(--text-secondary);">
+                Menampilkan <b id="outreach-showing-count">0</b> dari <b id="outreach-total-count">0</b> pesan outreach
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary);">
+                  <span>Tampilkan:</span>
+                  <select id="outreach-page-size" class="form-select" style="width: auto; padding: 4px 10px; font-size: 12.5px;" onchange="app.changeOutreachPageSize(this.value)">
+                    <option value="10" selected>10 / halaman</option>
+                    <option value="25">25 / halaman</option>
+                    <option value="50">50 / halaman</option>
+                    <option value="100">100 / halaman</option>
+                    <option value="0">Tampilkan Semua</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; gap: 6px; align-items: center;" id="outreach-pagination-nav">
+                  <button class="btn btn-secondary btn-sm" id="btn-outreach-prev" onclick="app.prevOutreachPage()">◀ Sebelumnya</button>
+                  <span style="font-size: 13px; font-weight: 600; padding: 0 4px;" id="outreach-page-indicator">Hal 1 / 1</span>
+                  <button class="btn btn-secondary btn-sm" id="btn-outreach-next" onclick="app.nextOutreachPage()">Selanjutnya ▶</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -945,6 +1044,139 @@
             <button type="submit" class="btn btn-primary" id="btn-submit-manual-biz">Simpan Bisnis ke Database</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Live Progress Generate Bulk AI -->
+  <div class="modal-overlay" id="modal-bulk-ai-progress">
+    <div class="modal-box" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3>🚀 Progres Generate Pesan Massal AI</h3>
+        <button class="btn btn-secondary btn-sm" id="btn-close-ai-progress" onclick="app.cancelBulkAIGenerate()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          AI sedang menganalisis profil bisnis, potensi kendala operasional, dan menyusun draf permohonan riset secara personal.
+        </p>
+
+        <!-- Overall Progress Box -->
+        <div style="background: var(--bg-tertiary); padding: 14px 16px; border-radius: var(--radius-md); border: 1px solid var(--bg-card-border); margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px;">
+            <span style="font-weight: 600;" id="ai-bulk-progress-status">Diproses 0 dari 0 bisnis</span>
+            <span style="font-weight: 700; color: var(--accent-primary);" id="ai-bulk-progress-percent">0%</span>
+          </div>
+          
+          <div style="height: 12px; background: var(--bg-card); border-radius: 6px; overflow: hidden; border: 1px solid var(--bg-card-border); margin-bottom: 10px;">
+            <div id="ai-bulk-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #7B61FF, var(--accent-primary)); transition: width 0.3s ease;"></div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted);">
+            <span id="ai-bulk-timer-label">⏱️ Waktu berjalan: 00:00</span>
+            <span id="ai-bulk-current-item-name">Menyiapkan antrean AI...</span>
+          </div>
+        </div>
+
+        <!-- Live Queue Details -->
+        <div style="margin-bottom: 16px;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Daftar Bisnis Target AI (<b id="ai-bulk-queue-count" style="color:var(--accent-primary);">0 bisnis</b>)</span>
+            <small style="color: var(--text-muted);">OmniRoute / Gemini Model</small>
+          </label>
+          <div id="ai-bulk-queue-list" style="max-height: 240px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--bg-card-border); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+            <small style="color: var(--text-muted);">Memuat antrean...</small>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px; justify-content: space-between;">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-ai-bulk" onclick="app.cancelBulkAIGenerate()">⏹️ Hentikan Proses</button>
+          <button type="button" class="btn btn-primary" id="btn-finish-ai-bulk" style="display:none;" onclick="app.closeModal('modal-bulk-ai-progress')">🎉 Selesai & Lihat Pesan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal WhatsApp Broadcast Batch Sender -->
+  <div class="modal-overlay" id="modal-wa-broadcast">
+    <div class="modal-box" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3>🚀 WhatsApp Broadcast Runner (Auto-Sender Massal)</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeWaBroadcastModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Fitur ini akan membuka WhatsApp Web (direct composer) secara otomatis ke nomor bisnis target satu per satu dengan pesan yang sudah terisi otomatis. Status pesan di database akan langsung diperbarui menjadi <b>Terkirim</b>.
+        </p>
+
+        <!-- Configuration Settings -->
+        <div style="background: var(--bg-tertiary); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--bg-card-border); margin-bottom: 16px;">
+          <div class="form-row" style="margin-bottom: 0;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Jeda Interval per Pesan</label>
+              <select id="broadcast-interval" class="form-select">
+                <option value="2000">⚡ 2 Detik (Cepat)</option>
+                <option value="4000" selected>⏱️ 4 Detik (Direkomendasikan)</option>
+                <option value="7000">🛡️ 7 Detik (Aman)</option>
+                <option value="10000">🐢 10 Detik (Sangat Aman)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Tipe Broadcast Target</label>
+              <select id="broadcast-target-type" class="form-select" onchange="app.renderWaBroadcastQueue()">
+                <option value="selected" selected>Hanya Terpilih (Checked)</option>
+                <option value="all_wa">Semua Pesan yang Memiliki WhatsApp</option>
+                <option value="draft_wa">Hanya Status Draft / Siap Kirim</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="broadcast-progress-container" style="margin-bottom: 16px; display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px;">
+            <span style="font-weight: 600;" id="broadcast-status-label">Menyiapkan broadcast...</span>
+            <span style="font-weight: 700; color: var(--accent-primary);" id="broadcast-progress-percent">0%</span>
+          </div>
+          <div style="height: 10px; background: var(--bg-tertiary); border-radius: 5px; overflow: hidden; border: 1px solid var(--bg-card-border);">
+            <div id="broadcast-progress-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-primary), #25D366); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+
+        <!-- Queue Preview List -->
+        <div style="margin-bottom: 16px;">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Daftar Antrean Broadcast (<b id="broadcast-queue-count" style="color:var(--accent-primary);">0 bisnis</b>)</span>
+            <small style="color: var(--text-muted);">Direct: web.whatsapp.com</small>
+          </label>
+          <div id="broadcast-queue-list" style="max-height: 220px; overflow-y: auto; background: var(--bg-tertiary); border: 1px solid var(--bg-card-border); border-radius: var(--radius-md); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px;">
+            <small style="color: var(--text-muted);">Memuat antrean...</small>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 16px 0 0 0; margin-top: 16px; justify-content: space-between;">
+          <button type="button" class="btn btn-secondary" onclick="app.closeWaBroadcastModal()">Tutup</button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-broadcast-pause" style="display:none;" onclick="app.pauseWaBroadcast()">⏸️ Jeda</button>
+            <button type="button" class="btn btn-whatsapp" id="btn-broadcast-start" onclick="app.runWaBroadcastQueue()">
+              🚀 Mulai Broadcast Otomatis
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom UI Confirmation Dialog Modal -->
+  <div class="modal-overlay" id="modal-confirm-dialog">
+    <div class="modal-box" style="max-width: 460px; text-align: center;">
+      <div style="font-size: 36px; margin-bottom: 8px;" id="confirm-dialog-icon">⚠️</div>
+      <h3 style="margin-bottom: 10px;" id="confirm-dialog-title">Konfirmasi Tindakan</h3>
+      <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;" id="confirm-dialog-message">
+        Apakah Anda yakin ingin melanjutkan tindakan ini?
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button type="button" class="btn btn-secondary" style="min-width: 100px;" id="btn-confirm-cancel">Batal</button>
+        <button type="button" class="btn btn-danger" style="min-width: 130px;" id="btn-confirm-ok">Ya, Lanjutkan</button>
       </div>
     </div>
   </div>
